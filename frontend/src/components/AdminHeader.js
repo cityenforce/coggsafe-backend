@@ -31,7 +31,7 @@ const AdminHeader = ({
           <View style={styles.adminOnlineDot} />
 
           <Text style={styles.appSubtitle}>
-            {user?.username || 'admin123'} · Safety Operations
+            {user?.username || 'admin123'}
           </Text>
         </View>
       </View>

@@ -207,7 +207,7 @@ const AdminSosScreen = ({
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search by worker, group, or address..."
+            placeholder="Search by name and group"
             placeholderTextColor="#9CA3AF"
             style={styles.searchInput}
           />

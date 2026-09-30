@@ -31,7 +31,6 @@ import {
 import {listSos, stopLiveLocation} from '../api/resources';
 import {getHoldSnapshot, SOS_HOLD_DURATION_MS} from '../features/sos/holdState';
 import {stopLiveLocationSharing} from '../features/sos/services/liveLocationService';
-import VolumeSosSetupCard from '../components/VolumeSosSetupCard';
 
 const UserHomeScreen = ({
   user,
@@ -537,8 +536,6 @@ const UserHomeScreen = ({
           </View>
         ) : null}
 
-        {/* Volume-Down x3 SOS: shows what is still switched off (Android needs the user to enable these). */}
-        <VolumeSosSetupCard />
 
         {/* ================= SMS PERMISSION WARNING ================= */}
 {smsPermissionState === 'blocked' && (
