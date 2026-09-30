@@ -157,6 +157,14 @@ async function getSosById(id, reqUser) {
     if (!isCollectionMember) {
       throw ApiError.forbidden('You do not have permission to access this SOS');
     }
+
+    // A collection member may only access an SOS while it is active. Once an
+    // admin deactivates it, notification/detail/media/live-location access
+    // must stop immediately. Owners and admins retain their existing access
+    // to the historical SOS record.
+    if (sos.status !== SOS_STATUS.ACTIVE) {
+      throw ApiError.notFound('SOS not found');
+    }
   }
   await enforceLiveLocationExpiry(sos);
   // Legacy records created before backend-component tracking was added are

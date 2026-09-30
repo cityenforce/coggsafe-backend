@@ -35,10 +35,13 @@ const UserNotificationScreen = ({
     const cachedNotifications = getCachedApiData('/notifications', token)?.notifications;
     const hasCachedNotifications = Array.isArray(cachedNotifications);
     if (hasCachedNotifications) {
-      setNotifications(cachedNotifications);
+      const activeCached = cachedNotifications.filter(item =>
+        item?.sosId && item.sosId.status === 'active',
+      );
+      setNotifications(activeCached);
       setLoading(false);
     }
-    const refresh = () => listNotifications(token, undefined, {forceRefresh: true})
+    const refresh = () => listNotifications(token, {onlyActive: true}, {forceRefresh: true})
       .then(result => {
         if (!mounted) return;
         const next = result.notifications || [];
@@ -49,7 +52,7 @@ const UserNotificationScreen = ({
       .finally(() => mounted && setLoading(false));
     setLoading(true);
     refresh();
-    const timer = setInterval(refresh, 10000);
+    const timer = setInterval(refresh, 2000);
     return () => { mounted = false; clearInterval(timer); };
   }, [token]);
 

@@ -62,6 +62,19 @@ const UserNotificationDetailScreen = ({notification, onBack, onViewSos, token, s
       if (cancelled || requestId !== requestIdRef.current || !result?.sos) return;
       if (result?.sos) {
         const sosData = result.sos;
+
+        // User notification details are valid only while the SOS is active.
+        // Do not fall back to the notification's cached populated SOS after
+        // the server reports that the SOS is gone/deactivated.
+        if (String(sosData.status || '').toLowerCase() !== 'active') {
+          setDetail(null);
+          setMediaUrls({front: null, back: null, audio: null});
+          setLiveLocation(null);
+          setLiveLocationStatus(null);
+          setError('This emergency has been deactivated and is no longer available.');
+          return;
+        }
+
         setDetail(sosData);
 
         const components = sosData.components || {};
@@ -106,7 +119,16 @@ const UserNotificationDetailScreen = ({notification, onBack, onViewSos, token, s
       // Never show a misleading generic "Something went wrong" message
       // underneath otherwise working voice/photos.
       if (!cancelled && requestId === requestIdRef.current) {
-        setError(err.message || 'Unable to load details.');
+        // Most importantly, clear the notification's stale populated SOS.
+        // Otherwise a 404 after admin deactivation would still render the old
+        // location/photos/voice from the notification payload.
+        setDetail(null);
+        setMediaUrls({front: null, back: null, audio: null});
+        setLiveLocation(null);
+        setLiveLocationStatus(null);
+        setError(err.status === 404
+          ? 'This emergency has been deactivated and is no longer available.'
+          : (err.message || 'Unable to load details.'));
       }
     } finally {
       if (!cancelled && requestId === requestIdRef.current) {

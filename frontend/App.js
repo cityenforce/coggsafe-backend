@@ -220,7 +220,7 @@ function AppContent() {
     try {
       const result = await listNotifications(
         token,
-        {limit: 1, unreadOnly: true},
+        {limit: 1, unreadOnly: true, ...(user.role === 'admin' ? {} : {onlyActive: true})},
         {forceRefresh: true},
       );
       const unread = Number.isFinite(result?.meta?.total)
@@ -292,7 +292,7 @@ function AppContent() {
       try {
         const result = await listNotifications(
           token,
-          {limit: 1, unreadOnly: true},
+          {limit: 1, unreadOnly: true, ...(user.role === 'admin' ? {} : {onlyActive: true})},
           {forceRefresh: true},
         );
         if (!mounted) return;

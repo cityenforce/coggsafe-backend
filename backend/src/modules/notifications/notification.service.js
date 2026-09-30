@@ -77,6 +77,25 @@ async function listForUser(userId, query = {}) {
   const filter = { recipientUserId: userId };
   if (String(query.unreadOnly) === 'true') filter.isRead = false;
 
+  const onlyActive = String(query.onlyActive) === 'true';
+
+  if (onlyActive) {
+    // User-facing notification lists must exclude deactivated SOS records,
+    // and their pagination/badge total must reflect that filtered set too.
+    // Populate first, then paginate the active records so an inactive SOS
+    // cannot leave a stale notification/count behind because it occupied a
+    // page slot.
+    const allItems = await Notification.find(filter)
+      .populate({ path: 'sosId', select: 'status emergencyMessage components liveLocation location emergencyToken' })
+      .sort({ createdAt: -1 });
+    const activeItems = allItems.filter((n) => n.sosId && n.sosId.status === SOS_STATUS.ACTIVE);
+    const pagedItems = activeItems.slice(skip, skip + limit);
+    return {
+      items: pagedItems,
+      meta: buildPaginationMeta({ page, limit, total: activeItems.length }),
+    };
+  }
+
   const [items, total] = await Promise.all([
     Notification.find(filter)
       .populate({ path: 'sosId', select: 'status emergencyMessage components liveLocation location emergencyToken' })
@@ -86,12 +105,7 @@ async function listForUser(userId, query = {}) {
     Notification.countDocuments(filter),
   ]);
 
-  const onlyActive = String(query.onlyActive) === 'true';
-  const filtered = onlyActive
-    ? items.filter((n) => n.sosId && n.sosId.status === SOS_STATUS.ACTIVE)
-    : items;
-
-  return { items: filtered, meta: buildPaginationMeta({ page, limit, total }) };
+  return { items, meta: buildPaginationMeta({ page, limit, total }) };
 }
 
 async function markAllRead(userId) {
