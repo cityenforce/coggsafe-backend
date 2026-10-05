@@ -25,6 +25,18 @@ const COLLECTION_TYPES = [
 
 const EMPTY_USER = {username: '', password: '', mobileNumber: '+', email: ''};
 
+const getRequestErrorMessage = (requestError, fallback) => {
+  const details = Array.isArray(requestError?.details) ? requestError.details : [];
+  const detailMessage = details.map(detail => {
+    if (typeof detail === 'string') return detail;
+    if (!detail) return '';
+    const message = detail.message || '';
+    const field = detail.field || detail.path || '';
+    return field ? `${field}: ${message}` : message;
+  }).filter(Boolean).join(' | ');
+  return detailMessage || requestError?.message || fallback;
+};
+
 function validateUser(user, index, users) {
   const errors = {};
   if (!user.username.trim()) errors.username = 'Username is required.';
@@ -105,13 +117,13 @@ export default function AdminCreateCollectionScreen({onBack, onSave, token}) {
           createdUsers += 1;
         }
       } catch (userError) {
-        Alert.alert('Group partially saved', `The group was created, but ${createdUsers} of ${users.length} users were saved. ${userError.message || 'Please review the group and try again.'}`);
+        Alert.alert('Group partially saved', `The group was created, but ${createdUsers} of ${users.length} users were saved. ${getRequestErrorMessage(userError, 'Please review the group and try again.')}`);
         return;
       }
       Alert.alert('Group saved', `${createdUsers} user${createdUsers === 1 ? '' : 's'} added successfully.`);
       onSave?.(collection, credentials);
     } catch (requestError) {
-      Alert.alert('Unable to save group', requestError.message || 'Please check your connection and try again.');
+      Alert.alert('Unable to save group', getRequestErrorMessage(requestError, 'Please check your connection and try again.'));
     } finally {
       setSubmitting(false);
     }

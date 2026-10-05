@@ -46,8 +46,11 @@ function normalizeError(err) {
     return ApiError.badRequest(messages[err.code] || 'File upload failed');
   }
 
-  // Unknown/programmer error — never leak details to the client.
-  return ApiError.internal('Something went wrong');
+  // Unknown error: expose the actual error message to the mobile app so the
+  // user/admin can see what actually failed. Keep the response limited to the
+  // error message (never send stack traces, request headers, tokens, or objects).
+  const actualMessage = String(err?.message || '').replace(/\s+/g, ' ').trim();
+  return ApiError.internal(actualMessage || 'The server could not complete that request.');
 }
 
 // eslint-disable-next-line no-unused-vars

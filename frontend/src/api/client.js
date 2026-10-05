@@ -1,12 +1,35 @@
 import {API_BASE_URL} from './config';
 import {emitSosDiagnostic} from '../features/sos/services/sosDiagnosticService';
 
+function formatErrorDetails(message, details) {
+  if (!Array.isArray(details) || details.length === 0) return message;
+
+  const detailMessages = details
+    .map(detail => {
+      if (typeof detail === 'string') return detail.trim();
+      if (!detail || typeof detail !== 'object') return '';
+      const detailMessage = String(detail.message || '').trim();
+      if (!detailMessage) return '';
+      const field = String(detail.field || detail.path || '').trim();
+      return field ? `${field}: ${detailMessage}` : detailMessage;
+    })
+    .filter(Boolean);
+
+  if (!detailMessages.length) return message;
+  const base = String(message || '').trim();
+  const unique = [...new Set(detailMessages)];
+  return base && !/^validation failed\.?$/i.test(base)
+    ? `${base}: ${unique.join(' | ')}`
+    : unique.join(' | ');
+}
+
 export class ApiError extends Error {
   constructor(message, status, details = undefined) {
-    super(message);
+    super(formatErrorDetails(message, details));
     this.name = 'ApiError';
     this.status = status;
     this.details = details;
+    this.rawMessage = message;
   }
 }
 

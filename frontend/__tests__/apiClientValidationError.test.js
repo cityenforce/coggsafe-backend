@@ -6,7 +6,7 @@ describe('API validation errors', () => {
       {field: 'mobileNumber', message: 'Mobile number must include country code, e.g. +923001234567'},
     ]);
 
-    expect(error.message).toBe('Validation failed');
+    expect(error.message).toBe('username: Username already exists | mobileNumber: Mobile number already exists');
     expect(error.status).toBe(400);
     expect(error.details).toEqual([
       {field: 'mobileNumber', message: 'Mobile number must include country code, e.g. +923001234567'},

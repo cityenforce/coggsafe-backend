@@ -13,6 +13,18 @@ import {
 } from 'react-native';
 
 import {createCollection, updateCollection} from '../../api/resources';
+
+const getRequestErrorMessage = (requestError, fallback) => {
+  const details = Array.isArray(requestError?.details) ? requestError.details : [];
+  const detailMessage = details.map(detail => {
+    if (typeof detail === 'string') return detail;
+    if (!detail) return '';
+    const message = detail.message || '';
+    const field = detail.field || detail.path || '';
+    return field ? `${field}: ${message}` : message;
+  }).filter(Boolean).join(' | ');
+  return detailMessage || requestError?.message || fallback;
+};
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const AdminAddCollectionScreen = ({
@@ -62,7 +74,7 @@ const AdminAddCollectionScreen = ({
       else onCreated?.(savedCollection);
       if (onSave) onSave(savedCollection);
     } catch (requestError) {
-      setError(requestError.message || `Unable to ${editCollection ? 'update' : 'create'} group.`);
+      setError(getRequestErrorMessage(requestError, `Unable to ${editCollection ? 'update' : 'create'} group.`));
     } finally {
       setSubmitting(false);
     }
