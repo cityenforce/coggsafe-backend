@@ -14,6 +14,7 @@ export const markAllNotificationsRead = token =>
   request('/notifications/read-all', {method: 'PATCH', token});
 
 export const listSos = (token, params, options = {}) => request(`/sos${queryString(params)}`, {token, ...options});
+export const getSosReports = (token, params, options = {}) => request(`/sos/reports${queryString(params)}`, {token, ...options});
 export const getSos = (token, id, options = {}) => request(`/sos/${id}`, {token, ...options});
 export const createSos = (token, body) => request('/sos', {method: 'POST', token, body});
 export const cancelSos = (token, id) => request(`/sos/${id}/cancel`, {method: 'PATCH', token});

@@ -19,6 +19,8 @@ import Icon from '../../components/Icon';
 import {clearDashboardSnapshots} from './AdminDashboardScreen';
 import {getDefaultEmergencyMessage} from '../../features/sos/services/emergencyMessage';
 import {getUserInitials} from '../../utils/userInitials';
+import SosReportModal from '../../components/SosReportModal';
+import SosDateFilterModal from '../../components/SosDateFilterModal';
 
 const sosSnapshots = new Map();
 
@@ -33,6 +35,9 @@ const AdminSosScreen = ({
   const [sosAlerts, setSosAlerts] = useState(() => sosSnapshots.get(token) || []);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedDateFilter, setSelectedDateFilter] = useState(null);
+  const [showDateFilterModal, setShowDateFilterModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -154,7 +159,20 @@ const AdminSosScreen = ({
     const matchesFilter =
       activeFilter === 'All' ? true : alert.status === activeFilter;
 
-    return matchesSearch && matchesFilter;
+    let matchesDate = true;
+    if (selectedDateFilter) {
+      if (!alert.createdAt) {
+        matchesDate = false;
+      } else {
+        const d = new Date(alert.createdAt);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        matchesDate = `${y}-${m}-${day}` === selectedDateFilter;
+      }
+    }
+
+    return matchesSearch && matchesFilter && matchesDate;
   });
 
   const getFilterCount = filter => {
@@ -221,31 +239,85 @@ const AdminSosScreen = ({
           )}
         </View>
 
-        {/* ================= FILTER TABS ================= */}
-        <View style={styles.filterTabs}>
-          {filters.map(filter => {
-            const isActive = activeFilter === filter;
-            return (
-              <TouchableOpacity
-                key={filter}
-                style={[
-                  styles.filterTab,
-                  isActive && styles.filterTabActive,
-                  isActive && filter === 'Active' && styles.filterTabActiveRed,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => setActiveFilter(filter)}>
-                <Text
+        {/* ================= FILTER TABS & DATE / REPORTS ================= */}
+        <View style={styles.filterTabsWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterTabs}>
+            {filters.map(filter => {
+              const isActive = activeFilter === filter;
+              return (
+                <TouchableOpacity
+                  key={filter}
                   style={[
-                    styles.filterTabText,
-                    isActive && styles.filterTabTextActive,
-                  ]}>
-                  {filter} ({getFilterCount(filter)})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                    styles.filterTab,
+                    isActive && styles.filterTabActive,
+                    isActive && filter === 'Active' && styles.filterTabActiveRed,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => setActiveFilter(filter)}>
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      isActive && styles.filterTabTextActive,
+                    ]}>
+                    {filter} ({getFilterCount(filter)})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* 1. Date Filter button to filter records on this screen */}
+            <TouchableOpacity
+              style={[
+                styles.dateFilterButton,
+                selectedDateFilter && styles.dateFilterButtonActive,
+              ]}
+              activeOpacity={0.7}
+              onPress={() => setShowDateFilterModal(true)}>
+              <Text style={styles.dateFilterButtonIcon}>📅</Text>
+              <Text
+                style={[
+                  styles.dateFilterButtonText,
+                  selectedDateFilter && styles.dateFilterButtonTextActive,
+                ]}>
+                {selectedDateFilter ? selectedDateFilter : 'Filter Date'}
+              </Text>
+              {selectedDateFilter ? (
+                <TouchableOpacity
+                  hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                  onPress={() => setSelectedDateFilter(null)}>
+                  <Text style={styles.clearDateFilterCross}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </TouchableOpacity>
+
+            {/* 2. Download Report button to export PDF */}
+            <TouchableOpacity
+              style={styles.reportsButton}
+              activeOpacity={0.7}
+              onPress={() => setShowReportsModal(true)}>
+              <Text style={styles.reportsButtonIcon}>📥</Text>
+              <Text style={styles.reportsButtonText}>Download Report</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
+
+        {/* Active date filter banner */}
+        {selectedDateFilter && (
+          <View style={styles.activeDateBanner}>
+            <Text style={styles.activeDateBannerText}>
+              Showing alerts for: <Text style={styles.activeDateBannerBold}>{selectedDateFilter}</Text>
+            </Text>
+            <TouchableOpacity
+              style={styles.activeDateBannerClear}
+              onPress={() => setSelectedDateFilter(null)}
+              activeOpacity={0.7}>
+              <Text style={styles.activeDateBannerClearText}>Clear Filter ✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ================= ALERTS LIST ================= */}
         <ScrollView
@@ -393,6 +465,26 @@ const AdminSosScreen = ({
           <View style={styles.bottomSpace} />
         </ScrollView>
 
+        {/* ================= SOS REPORT & PDF EXPORT MODAL ================= */}
+        <SosReportModal
+          visible={showReportsModal}
+          onClose={() => setShowReportsModal(false)}
+          token={token}
+          isAdmin={true}
+          onSosDetail={alert => {
+            setShowReportsModal(false);
+            onSosDetail?.(alert);
+          }}
+        />
+
+        {/* ================= SOS DATE FILTER MODAL ================= */}
+        <SosDateFilterModal
+          visible={showDateFilterModal}
+          onClose={() => setShowDateFilterModal(false)}
+          selectedDate={selectedDateFilter}
+          onApplyDate={setSelectedDateFilter}
+        />
+
       </View>
     </SafeAreaView>
   );
@@ -536,11 +628,112 @@ const styles = StyleSheet.create({
   },
 
   /* ================= FILTER TABS ================= */
+  filterTabsWrapper: {
+    marginBottom: 14,
+  },
+
   filterTabs: {
     flexDirection: 'row',
     gap: 6,
     paddingHorizontal: 20,
-    marginBottom: 14,
+  },
+
+  /* Date filter button */
+  dateFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E7EA',
+    marginLeft: 4,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  dateFilterButtonActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  dateFilterButtonIcon: {
+    fontSize: 13,
+    marginRight: 5,
+  },
+  dateFilterButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  dateFilterButtonTextActive: {
+    color: '#1D4ED8',
+  },
+  clearDateFilterCross: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    marginLeft: 6,
+    paddingHorizontal: 3,
+  },
+
+  /* Active Date Banner */
+  activeDateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    marginHorizontal: 20,
+    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  activeDateBannerText: {
+    fontSize: 12,
+    color: '#1E40AF',
+  },
+  activeDateBannerBold: {
+    fontWeight: '700',
+    color: '#1E3A8A',
+  },
+  activeDateBannerClear: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: '#DBEAFE',
+    borderRadius: 4,
+  },
+  activeDateBannerClearText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+
+  reportsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFF0F2',
+    borderWidth: 1,
+    borderColor: '#FFD1D8',
+    marginLeft: 4,
+  },
+
+  reportsButtonIcon: {
+    fontSize: 13,
+    marginRight: 6,
+  },
+
+  reportsButtonText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#E4002B',
   },
 
   filterTab: {

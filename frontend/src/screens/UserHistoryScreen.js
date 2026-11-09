@@ -14,6 +14,8 @@ import {
 import {listSos} from '../api/resources';
 import {getCachedApiData} from '../api/client';
 import Icon from '../components/Icon';
+import SosReportModal from '../components/SosReportModal';
+import SosDateFilterModal from '../components/SosDateFilterModal';
 
 const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
   const [records, setRecords] = useState([]);
@@ -21,6 +23,9 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
+  const [selectedDateFilter, setSelectedDateFilter] = useState(null);
+  const [showDateFilterModal, setShowDateFilterModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
 
   // ================= Load History =================
   const loadHistory = useCallback(async (forceRefresh = false) => {
@@ -57,8 +62,21 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
 
   // ================= Filters =================
   const getFilteredRecords = () => {
-    if (filter === 'all') return records;
-    return records.filter(item => item.status === filter);
+    let result = records;
+    if (filter !== 'all') {
+      result = result.filter(item => (item.status || '').toLowerCase() === filter.toLowerCase());
+    }
+    if (selectedDateFilter) {
+      result = result.filter(item => {
+        if (!item.createdAt) return false;
+        const d = new Date(item.createdAt);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}` === selectedDateFilter;
+      });
+    }
+    return result;
   };
 
   // ================= Status Helpers =================
@@ -126,26 +144,81 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
         </View>
       </View>
 
-      {/* ================= FILTERS ================= */}
-      <View style={styles.filterContainer}>
-        {['all', 'active', 'cancelled', 'deactivated'].map((filterType) => (
+      {/* ================= FILTERS & DATE / REPORTS ================= */}
+      <View style={styles.filterWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContainer}>
+          {['all', 'active', 'cancelled', 'deactivated'].map((filterType) => (
+            <TouchableOpacity
+              key={filterType}
+              style={[
+                styles.filterButton,
+                filter === filterType && styles.filterButtonActive,
+              ]}
+              onPress={() => setFilter(filterType)}
+            >
+              <Text style={[
+                styles.filterText,
+                filter === filterType && styles.filterTextActive,
+              ]}>
+                {filterType.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          {/* 1. Date Filter Button */}
           <TouchableOpacity
-            key={filterType}
             style={[
-              styles.filterButton,
-              filter === filterType && styles.filterButtonActive,
+              styles.dateFilterButton,
+              selectedDateFilter && styles.dateFilterButtonActive,
             ]}
-            onPress={() => setFilter(filterType)}
+            onPress={() => setShowDateFilterModal(true)}
+            activeOpacity={0.7}
           >
+            <Text style={styles.dateFilterButtonIcon}>📅</Text>
             <Text style={[
-              styles.filterText,
-              filter === filterType && styles.filterTextActive,
+              styles.dateFilterButtonText,
+              selectedDateFilter && styles.dateFilterButtonTextActive,
             ]}>
-              {filterType.toUpperCase()}
+              {selectedDateFilter ? selectedDateFilter : 'Filter Date'}
             </Text>
+            {selectedDateFilter ? (
+              <TouchableOpacity
+                hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                onPress={() => setSelectedDateFilter(null)}>
+                <Text style={styles.clearDateFilterCross}>✕</Text>
+              </TouchableOpacity>
+            ) : null}
           </TouchableOpacity>
-        ))}
+
+          {/* 2. Download Report Button */}
+          <TouchableOpacity
+            style={styles.reportsButton}
+            onPress={() => setShowReportsModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.reportsButtonIcon}>📥</Text>
+            <Text style={styles.reportsButtonText}>Download Report</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
+
+      {/* Active date filter banner */}
+      {selectedDateFilter && (
+        <View style={styles.activeDateBanner}>
+          <Text style={styles.activeDateBannerText}>
+            Showing records for: <Text style={styles.activeDateBannerBold}>{selectedDateFilter}</Text>
+          </Text>
+          <TouchableOpacity
+            style={styles.activeDateBannerClear}
+            onPress={() => setSelectedDateFilter(null)}
+            activeOpacity={0.7}>
+            <Text style={styles.activeDateBannerClearText}>Clear Filter ✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ================= LIST ================= */}
       <ScrollView
@@ -213,6 +286,26 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
         )}
         <View style={styles.bottomSpace} />
       </ScrollView>
+
+      {/* ================= USER SOS REPORT MODAL ================= */}
+      <SosReportModal
+        visible={showReportsModal}
+        onClose={() => setShowReportsModal(false)}
+        token={token}
+        isAdmin={false}
+        onSosDetail={(item) => {
+          setShowReportsModal(false);
+          handleCardPress(item);
+        }}
+      />
+
+      {/* ================= SOS DATE FILTER MODAL ================= */}
+      <SosDateFilterModal
+        visible={showDateFilterModal}
+        onClose={() => setShowDateFilterModal(false)}
+        selectedDate={selectedDateFilter}
+        onApplyDate={setSelectedDateFilter}
+      />
     </SafeAreaView>
   );
 };
@@ -270,11 +363,107 @@ const styles = StyleSheet.create({
   statActiveLabel: { color: '#E4002B' },
   statResolvedLabel: { color: '#178A4B' },
 
+  filterWrapper: {
+    paddingTop: 14,
+  },
+
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 14,
     gap: 8,
+  },
+
+  /* Date filter button */
+  dateFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F1F2F4',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginLeft: 4,
+  },
+  dateFilterButtonActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  dateFilterButtonIcon: {
+    fontSize: 13,
+    marginRight: 5,
+  },
+  dateFilterButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  dateFilterButtonTextActive: {
+    color: '#1D4ED8',
+  },
+  clearDateFilterCross: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    marginLeft: 6,
+    paddingHorizontal: 2,
+  },
+
+  /* Active Date Banner */
+  activeDateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  activeDateBannerText: {
+    fontSize: 12,
+    color: '#1E40AF',
+  },
+  activeDateBannerBold: {
+    fontWeight: '700',
+    color: '#1E3A8A',
+  },
+  activeDateBannerClear: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: '#DBEAFE',
+    borderRadius: 4,
+  },
+  activeDateBannerClearText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+
+  reportsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FFF0F2',
+    borderWidth: 1,
+    borderColor: '#FFD1D8',
+    marginLeft: 4,
+  },
+
+  reportsButtonIcon: {
+    fontSize: 13,
+    marginRight: 6,
+  },
+
+  reportsButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E4002B',
   },
 
   filterButton: {

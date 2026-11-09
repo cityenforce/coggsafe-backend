@@ -27,6 +27,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.LifecycleOwner
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
@@ -967,6 +968,64 @@ class EmergencyMediaModule(
                 putString("reason", "Telephony state check failed; assuming available.")
                 putBoolean("hasActiveSubscription", true)
             })
+        }
+    }
+
+    @ReactMethod
+    fun openPdf(filePath: String, promise: Promise) {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) {
+                promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                reactContext,
+                "${reactContext.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, "Open SOS Report").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            reactContext.startActivity(chooser)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("OPEN_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun sharePdf(filePath: String, title: String?, promise: Promise) {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) {
+                promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                reactContext,
+                "${reactContext.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, title ?: "CoGG Safe SOS Report")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, "Share SOS Report").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            reactContext.startActivity(chooser)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SHARE_ERROR", e.message, e)
         }
     }
 

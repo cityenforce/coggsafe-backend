@@ -76,7 +76,6 @@ goto fail
 @rem Setup the command line
 
 @rem Keep Gradle distribution and dependency caches on the project drive instead of the Windows C: user profile.
-set "GRADLE_USER_HOME=%APP_HOME%\.gradle-user-home"
 
 
 
