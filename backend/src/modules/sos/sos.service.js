@@ -358,12 +358,13 @@ async function getSosReports(query, reqUser) {
   const limit = Math.min(1000, Math.max(1, parseInt(query.limit, 10) || 200));
   const skip = (page - 1) * limit;
 
-  const [records, totalCount, activeCount, deactivatedCount] = await Promise.all([
+  const [records, totalCount, activeCount, deactivatedCount, resolvedCount] = await Promise.all([
     Sos.find(filter)
       .populate('userId', 'username mobileNumber email')
       .populate('collectionId', 'name type emergencyCallNumber')
       .populate('cancelledBy', 'username')
       .populate('deactivatedBy', 'username')
+      .populate('resolvedBy', 'username')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -371,6 +372,7 @@ async function getSosReports(query, reqUser) {
     Sos.countDocuments(filter),
     Sos.countDocuments({ ...filter, status: SOS_STATUS.ACTIVE }),
     Sos.countDocuments({ ...filter, status: SOS_STATUS.DEACTIVATED }),
+    Sos.countDocuments({ ...filter, status: SOS_STATUS.RESOLVED }),
   ]);
 
   const formattedRecords = records.map((sos) => {
@@ -385,7 +387,9 @@ async function getSosReports(query, reqUser) {
 
     if (createdAtTime) {
       let endTime = null;
-      if (sos.deactivatedAt) {
+      if (sos.resolvedAt) {
+        endTime = new Date(sos.resolvedAt).getTime();
+      } else if (sos.deactivatedAt) {
         endTime = new Date(sos.deactivatedAt).getTime();
       } else if (sos.cancelledAt) {
         endTime = new Date(sos.cancelledAt).getTime();
@@ -428,16 +432,18 @@ async function getSosReports(query, reqUser) {
       activatedAt: sos.activatedAt || sos.createdAt,
       deactivatedAt: sos.deactivatedAt || null,
       cancelledAt: sos.cancelledAt || null,
+      resolvedAt: sos.resolvedAt || null,
       deactivatedBy: sos.deactivatedBy ? (sos.deactivatedBy.username || String(sos.deactivatedBy)) : null,
       cancelledBy: sos.cancelledBy ? (sos.cancelledBy.username || String(sos.cancelledBy)) : null,
+      resolvedBy: sos.resolvedBy ? (sos.resolvedBy.username || String(sos.resolvedBy)) : null,
 
       user: {
-        id: user._id ? String(user._id) : (user.id || 'Not Available'),
-        name: user.username || 'Not Available',
+        id: user._id ? String(user._id) : (user.id || 'Deleted User'),
+        name: user.username || (sos.emergencyMessage?.match(/I am ([^,]+)/)?.[1]) || 'Deleted User',
         mobileNumber: user.mobileNumber || 'Not Available',
         email: user.email || 'Not Available',
-        groupName: collection.name || 'Not Available',
-        groupType: collection.type || 'Not Available',
+        groupName: collection.name || 'Deleted Group',
+        groupType: collection.type || 'Standard',
         emergencyCallNumber: collection.emergencyCallNumber || 'Not Configured',
       },
 
@@ -519,7 +525,8 @@ async function getSosReports(query, reqUser) {
         totalRecords: totalCount,
         activeRecords: activeCount,
         deactivatedRecords: deactivatedCount,
-        cancelledRecords: totalCount - activeCount - deactivatedCount,
+        resolvedRecords: resolvedCount,
+        cancelledRecords: Math.max(0, totalCount - activeCount - deactivatedCount - resolvedCount),
       },
       pagination: {
         page,
@@ -585,6 +592,31 @@ async function deactivateSos(id, reqUser) {
   }
 
   if (updated.liveLocation.status === LIVE_LOCATION_STATUS.ACTIVE) {
+    await stopLiveLocationInternal(id, LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED);
+    updated.liveLocation.status = LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED;
+  }
+
+  return updated;
+}
+
+async function resolveSos(id, reqUser) {
+  const sos = await getSosOrThrow(id);
+
+  if (![SOS_STATUS.ACTIVE, SOS_STATUS.DEACTIVATED].includes(sos.status)) {
+    throw ApiError.conflict('Only an active or deactivated SOS can be resolved');
+  }
+
+  const updated = await Sos.findOneAndUpdate(
+    { _id: id },
+    { $set: { status: SOS_STATUS.RESOLVED, resolvedAt: new Date(), resolvedBy: reqUser.id } },
+    { new: true }
+  );
+
+  if (!updated) {
+    throw ApiError.conflict('This SOS can no longer be resolved');
+  }
+
+  if (updated.liveLocation?.status === LIVE_LOCATION_STATUS.ACTIVE) {
     await stopLiveLocationInternal(id, LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED);
     updated.liveLocation.status = LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED;
   }
@@ -841,6 +873,7 @@ module.exports = {
   dispatchSosAfterPersistence,
   cancelSos,
   deactivateSos,
+  resolveSos,
   deleteSos,
   reportLocation,
   reportMedia,
