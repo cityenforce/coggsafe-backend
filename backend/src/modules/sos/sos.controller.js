@@ -80,6 +80,11 @@ const deactivateSos = asyncHandler(async (req, res) => {
   ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'SOS deactivated', data: { sos: withEmergencyLink(sos, req) } });
 });
 
+const resolveSos = asyncHandler(async (req, res) => {
+  const sos = await sosService.resolveSos(req.params.id, req.user);
+  ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'SOS resolved', data: { sos: withEmergencyLink(sos, req) } });
+});
+
 const deleteSos = asyncHandler(async (req, res) => {
   await sosService.deleteSos(req.params.id, req.user);
   ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'SOS deleted', data: {}});
@@ -206,6 +211,7 @@ module.exports = {
   getSos,
   cancelSos,
   deactivateSos,
+  resolveSos,
   deleteSos,
   reportLocation,
   reportMedia,
