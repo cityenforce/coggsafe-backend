@@ -119,6 +119,8 @@ const sosSchema = new Schema(
     cancelledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     deactivatedAt: { type: Date, default: null },
     deactivatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    resolvedAt: { type: Date, default: null },
+    resolvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 
     location: { type: locationSchema, default: () => ({}) },
     liveLocation: { type: liveLocationSchema, default: () => ({}) },
