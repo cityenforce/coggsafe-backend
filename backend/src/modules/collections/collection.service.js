@@ -1,5 +1,7 @@
 const Collection = require('./collection.model');
 const User = require('../users/user.model');
+const PushToken = require('../notifications/pushToken.model');
+const Notification = require('../notifications/notification.model');
 const ApiError = require('../../utils/ApiError');
 const { COLLECTION_TYPES } = require('../../constants/sosConstants');
 const { parsePagination, buildPaginationMeta } = require('../../utils/paginate');
@@ -70,6 +72,22 @@ async function getCollectionById(id) {
 
 async function deleteCollection(id) {
   const collection = await getCollectionById(id);
+
+  // A group owns its user memberships. When the group is permanently
+  // deleted, remove those users, their registered push tokens, and their
+  // notifications.
+  // NOTE: SOS records (Sos) are deliberately PRESERVED so historical
+  // emergency reporting remains durable and verifiable.
+  const users = await User.find({ collectionId: collection._id }).select('_id');
+  const userIds = users.map(user => user._id);
+
+  if (userIds.length) {
+    await PushToken.deleteMany({ userId: { $in: userIds } });
+    await Notification.deleteMany({ userId: { $in: userIds } });
+    await User.deleteMany({ _id: { $in: userIds } });
+  }
+
+  await Notification.deleteMany({ collectionId: collection._id });
   await Collection.deleteOne({ _id: collection._id });
   return null;
 }
