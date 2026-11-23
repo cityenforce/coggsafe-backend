@@ -18,7 +18,12 @@ const AdminBottomNav = ({
       icon: '⌂',
     },
     {
-      key: 'Groups',  // ✅ Changed from 'Users' to 'Groups'
+      key: 'Users',
+      label: 'Users',
+      icon: '👥',
+    },
+    {
+      key: 'Groups',
       label: 'Groups',
       icon: '◫',
     },

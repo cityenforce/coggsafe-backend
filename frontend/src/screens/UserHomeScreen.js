@@ -10,7 +10,6 @@ import {
   Animated,
   Linking,
   Alert,
-  Modal,
 } from 'react-native';
 import {
   checkSosPermissions,
@@ -29,7 +28,7 @@ import {
   promptEnableLocationServices,
   openLocationSettings,
 } from '../features/sos/services/locationService';
-import {listSos, stopLiveLocation, listMyCollections, updateMyProfile} from '../api/resources';
+import {listSos, stopLiveLocation} from '../api/resources';
 import {getHoldSnapshot, SOS_HOLD_DURATION_MS} from '../features/sos/holdState';
 import {stopLiveLocationSharing} from '../features/sos/services/liveLocationService';
 
@@ -67,9 +66,6 @@ const UserHomeScreen = ({
   // ================= Location Status State =================
   const [locationStatus, setLocationStatus] = useState('checking');
   const [locationError, setLocationError] = useState('');
-  const [groups, setGroups] = useState([]);
-  const [activeGroupId, setActiveGroupId] = useState(user?.activeCollectionId || user?.collectionId || null);
-  const [showGroupPicker, setShowGroupPicker] = useState(false);
 
   const isSosButtonDisabled = Boolean(
     permissionState.isChecking ||
@@ -175,34 +171,6 @@ const UserHomeScreen = ({
       clearInterval(timer);
     };
   }, []);
-
-  useEffect(() => {
-    if (!token) return undefined;
-    let mounted = true;
-    listMyCollections(token, {forceRefresh:true})
-      .then(response => {
-        if (!mounted) return;
-        const next = response?.collections || response?.data?.collections || [];
-        setGroups(next);
-        const currentId = activeGroupId || user?.activeCollectionId || user?.collectionId;
-        if (!next.some(group => String(group._id || group.id) === String(currentId)) && next.length) {
-          setActiveGroupId(next[0]._id || next[0].id);
-        }
-      })
-      .catch(() => undefined);
-    return () => { mounted = false; };
-  }, [token]);
-
-  const selectGroup = async group => {
-    const id = group._id || group.id;
-    setActiveGroupId(id);
-    setShowGroupPicker(false);
-    try {
-      await updateMyProfile(token, {activeCollectionId:id});
-    } catch (_) {}
-  };
-
-  const activeGroup = groups.find(group => String(group._id || group.id) === String(activeGroupId));
 
   // ================= SMS Permission Actions =================
   const handleEnableSmsPermission = async () => {
@@ -382,7 +350,7 @@ const UserHomeScreen = ({
         if (__DEV__) {
                                                 }
 
-                if (typeof onTriggerSos === 'function') onTriggerSos({activeGroupId});
+                if (typeof onTriggerSos === 'function') onTriggerSos();
         return;
       }
 
@@ -436,7 +404,6 @@ const UserHomeScreen = ({
   }, []);
 
   return (
-    <>
     <ScrollView
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}>
@@ -449,13 +416,6 @@ const UserHomeScreen = ({
             onPress={onSwitchToAdmin}
             accessibilityRole="button">
             <Text style={styles.portalButtonText}>Admin Dashboard</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {groups.length ? (
-          <TouchableOpacity style={styles.groupSelector} onPress={() => setShowGroupPicker(true)} accessibilityRole="button">
-            <Text style={styles.groupSelectorLabel}>Active Group</Text>
-            <Text style={styles.groupSelectorValue}>{activeGroup?.name || 'Select group'}  {activeGroup ? `(${activeGroup.userCount || 0} members)` : ''}</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -675,44 +635,6 @@ const UserHomeScreen = ({
           })}
       </View>
     </ScrollView>
-    <Modal visible={showGroupPicker} transparent animationType="slide" onRequestClose={() => setShowGroupPicker(false)}>
-      <View style={styles.groupModalBackdrop}>
-        <View style={styles.groupModal}>
-          <Text style={styles.groupModalTitle}>Select Active Group</Text>
-          {groups.map(group => {
-            const id = group._id || group.id;
-            const isActive = String(id) === String(activeGroupId);
-            return (
-              <TouchableOpacity key={id} style={[styles.groupOption, isActive && styles.groupOptionActive]} onPress={() => selectGroup(group)}>
-                <Text style={[styles.groupOptionName, isActive && styles.groupOptionNameActive]}>{group.name}</Text>
-                <Text style={styles.groupOptionCount}>{group.userCount || 0} members{isActive ? ' • Active' : ''}</Text>
-              </TouchableOpacity>
-            );
-          })}
-          {user?.role === 'admin' ? (
-            <TouchableOpacity
-              style={styles.allGroupsButton}
-              onPress={() => Alert.alert(
-                'Send SOS to All Groups?',
-                'This will notify eligible members of every group you own.',
-                [
-                  {text:'Cancel',style:'cancel'},
-                  {text:'Send SOS',style:'destructive',onPress:()=> {
-                    setShowGroupPicker(false);
-                    if (typeof onTriggerSos === 'function') onTriggerSos({allGroups:true});
-                  }},
-                ]
-              )}>
-              <Text style={styles.allGroupsButtonText}>Send SOS to All My Groups</Text>
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity style={styles.groupModalClose} onPress={() => setShowGroupPicker(false)}>
-            <Text style={styles.groupModalCloseText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-    </>
   );
 };
 
@@ -729,25 +651,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-
-  groupSelector: {
-    alignSelf:'stretch', borderRadius:14, borderWidth:1, borderColor:'#E4002B',
-    backgroundColor:'#FFF', paddingHorizontal:16, paddingVertical:12, marginBottom:18,
-  },
-  groupSelectorLabel: {fontSize:12,color:'#666',fontWeight:'700',textTransform:'uppercase'},
-  groupSelectorValue: {fontSize:16,color:'#111',fontWeight:'800',marginTop:4},
-  groupModalBackdrop: {flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.45)'},
-  groupModal: {backgroundColor:'#FFF',borderTopLeftRadius:20,borderTopRightRadius:20,padding:20,paddingBottom:30},
-  groupModalTitle: {fontSize:20,fontWeight:'800',marginBottom:12,color:'#111'},
-  groupOption: {borderRadius:12,borderWidth:1,borderColor:'#DDD',padding:14,marginTop:8},
-  groupOptionActive: {borderColor:'#E4002B',backgroundColor:'#FFF2F5'},
-  groupOptionName: {fontSize:16,fontWeight:'800',color:'#222'},
-  groupOptionNameActive: {color:'#E4002B'},
-  groupOptionCount: {fontSize:13,color:'#666',marginTop:3},
-  allGroupsButton: {marginTop:14,backgroundColor:'#E4002B',borderRadius:12,alignItems:'center',padding:14},
-  allGroupsButtonText: {color:'#FFF',fontWeight:'800'},
-  groupModalClose: {marginTop:14,alignItems:'center',padding:12},
-  groupModalCloseText: {color:'#666',fontWeight:'700'},
 
   portalButton: {
     alignSelf: 'stretch',

@@ -6,9 +6,6 @@ const { USER_STATUS } = require('../../constants/sosConstants');
 const { parsePagination, buildPaginationMeta } = require('../../utils/paginate');
 const escapeRegex = require('../../utils/escapeRegex');
 const { decryptCredentialPassword } = require('../../utils/password');
-const CollectionMembership = require('../collections/collectionMembership.model');
-const EmergencyContactMembership = require('../collections/emergencyContactMembership.model');
-const EmergencyContact = require('../collections/emergencyContact.model');
 
 // Every read in this module excludes soft-deleted users by default —
 // a deleted user should behave as gone from all admin management views,
@@ -38,6 +35,14 @@ async function createUser({ username, mobileNumber, password, email, collectionI
     mobileNumber,
     email: email || undefined,
     collectionId,
+    groupMemberships: [
+      {
+        collectionId,
+        role: 'user',
+        assignedAt: new Date(),
+      },
+    ],
+    adminCreated: false, // membership-only user
     role: ROLES.USER, // hard-coded, never derived from caller input
   });
   await user.setPassword(password);
@@ -45,26 +50,208 @@ async function createUser({ username, mobileNumber, password, email, collectionI
   return user;
 }
 
+async function createOrAssignBoss({ username, mobileNumber, password, email, collectionIds, groupRole = 'boss' }) {
+  if (!Array.isArray(collectionIds) || collectionIds.length === 0) {
+    throw ApiError.badRequest('At least one group must be assigned');
+  }
+
+  const existingCollections = await Collection.find({ _id: { $in: collectionIds } });
+  if (existingCollections.length !== collectionIds.length) {
+    throw ApiError.badRequest('One or more collectionIds do not reference an existing collection');
+  }
+
+  let user = await User.findOne({ mobileNumber, ...NOT_DELETED });
+
+  if (user) {
+    // Assign to existing user without creating a duplicate account
+    if (username && username.trim() && username.trim() !== user.username) {
+      const taken = await User.findOne({ username: username.trim(), _id: { $ne: user._id }, ...NOT_DELETED });
+      if (taken) {
+        throw ApiError.conflict('Username already taken by another user');
+      }
+      user.username = username.trim();
+    }
+    if (email !== undefined) {
+      user.email = email === null || email === '' ? undefined : email.trim();
+    }
+    if (password && password.trim()) {
+      if (password.length < 8) {
+        throw ApiError.badRequest('Password must be at least 8 characters');
+      }
+      await user.setPassword(password);
+    }
+
+    user.adminCreated = true;
+
+    if (!user.groupMemberships) {
+      user.groupMemberships = [];
+    }
+
+    // Preserve existing group memberships
+    if (user.collectionId && !user.groupMemberships.some(m => String(m.collectionId?._id || m.collectionId) === String(user.collectionId))) {
+      user.groupMemberships.push({
+        collectionId: user.collectionId,
+        role: 'user',
+        assignedAt: new Date(),
+      });
+    }
+
+    collectionIds.forEach(colId => {
+      const idx = user.groupMemberships.findIndex(m => String(m.collectionId?._id || m.collectionId) === String(colId));
+      if (idx >= 0) {
+        user.groupMemberships[idx].role = groupRole;
+      } else {
+        user.groupMemberships.push({
+          collectionId: colId,
+          role: groupRole,
+          assignedAt: new Date(),
+        });
+      }
+    });
+
+    if (!user.collectionId && collectionIds.length > 0) {
+      user.collectionId = collectionIds[0];
+    }
+
+    await user.save();
+    const populated = await User.findById(user._id)
+      .populate('collectionId', 'name type emergencyCallNumber')
+      .populate('groupMemberships.collectionId', 'name type emergencyCallNumber');
+    return { user: formatUserRecord(populated), isExistingUser: true };
+  }
+
+  // Brand new Boss user
+  const usernameTaken = await User.findOne({ username: username.trim(), ...NOT_DELETED });
+  if (usernameTaken) {
+    throw ApiError.conflict('Username already taken');
+  }
+
+  if (!password || password.length < 8) {
+    throw ApiError.badRequest('Password is required and must be at least 8 characters');
+  }
+
+  user = new User({
+    username: username.trim(),
+    mobileNumber: mobileNumber.trim(),
+    email: email && email.trim() ? email.trim() : undefined,
+    role: ROLES.USER, // hard-coded, never global admin
+    adminCreated: true,
+    collectionId: collectionIds[0],
+    groupMemberships: collectionIds.map(id => ({
+      collectionId: id,
+      role: groupRole,
+      assignedAt: new Date(),
+    })),
+  });
+
+  await user.setPassword(password);
+  await user.save();
+
+  const populated = await User.findById(user._id)
+    .populate('collectionId', 'name type emergencyCallNumber')
+    .populate('groupMemberships.collectionId', 'name type emergencyCallNumber');
+  return { user: formatUserRecord(populated), isExistingUser: false };
+}
+
+function formatUserRecord(userDoc) {
+  if (!userDoc) return null;
+  const doc = typeof userDoc.toObject === 'function' ? userDoc.toObject() : { ...userDoc };
+  const groupMap = new Map();
+
+  if (doc.collectionId && (doc.collectionId._id || doc.collectionId.id)) {
+    const colId = doc.collectionId._id || doc.collectionId.id;
+    groupMap.set(String(colId), {
+      id: colId,
+      _id: colId,
+      name: doc.collectionId.name || 'Group',
+      type: doc.collectionId.type || 'other',
+      emergencyCallNumber: doc.collectionId.emergencyCallNumber,
+      role: 'user',
+    });
+  }
+
+  if (Array.isArray(doc.groupMemberships)) {
+    doc.groupMemberships.forEach(m => {
+      if (m && m.collectionId) {
+        const colObj = typeof m.collectionId === 'object' ? m.collectionId : {};
+        const colId = colObj._id || colObj.id || m.collectionId;
+        if (colId) {
+          groupMap.set(String(colId), {
+            id: colId,
+            _id: colId,
+            name: colObj.name || (groupMap.get(String(colId))?.name || 'Group'),
+            type: colObj.type || (groupMap.get(String(colId))?.type || 'other'),
+            emergencyCallNumber: colObj.emergencyCallNumber,
+            role: m.role || 'user',
+          });
+        }
+      }
+    });
+  }
+
+  doc.assignedGroups = Array.from(groupMap.values());
+  const hasBossRole = doc.assignedGroups.some(g => g.role === 'boss');
+  doc.isBoss = hasBossRole;
+  doc.displayRole = doc.role === ROLES.ADMIN ? 'Admin' : (hasBossRole ? 'Boss' : 'User');
+  doc.isMembershipOnly = !doc.adminCreated && !hasBossRole && doc.role !== ROLES.ADMIN;
+  doc.canEditDelete = doc.adminCreated || hasBossRole;
+
+  return doc;
+}
+
+async function removeUserFromCollection(collectionId, userId) {
+  const user = await getUserById(userId);
+
+  user.groupMemberships = (user.groupMemberships || []).filter(
+    m => String(m.collectionId?._id || m.collectionId) !== String(collectionId)
+  );
+
+  if (String(user.collectionId?._id || user.collectionId) === String(collectionId)) {
+    user.collectionId = user.groupMemberships[0]?.collectionId?._id || user.groupMemberships[0]?.collectionId || null;
+  }
+
+  await user.save();
+  return formatUserRecord(user);
+}
+
 async function listUsers(query = {}) {
   const { page, limit, skip } = parsePagination(query);
   const filter = { ...NOT_DELETED };
 
   if (query.status) filter.status = query.status;
-  if (query.collectionId) filter.collectionId = query.collectionId;
+  if (query.collectionId) {
+    filter.$or = [
+      { collectionId: query.collectionId },
+      { 'groupMemberships.collectionId': query.collectionId },
+    ];
+  }
   if (query.excludeUserId) {
     filter._id = { $ne: query.excludeUserId };
   }
+  if (query.role) {
+    filter.role = query.role;
+  }
+  if (query.groupRole) {
+    filter['groupMemberships.role'] = query.groupRole;
+  }
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
-    filter.$or = [{ username: regex }, { mobileNumber: regex }];
+    filter.$or = [{ username: regex }, { mobileNumber: regex }, { email: regex }];
   }
 
   const [items, total] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    User.find(filter)
+      .populate('collectionId', 'name type emergencyCallNumber')
+      .populate('groupMemberships.collectionId', 'name type emergencyCallNumber')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
     User.countDocuments(filter),
   ]);
 
-  return { items, meta: buildPaginationMeta({ page, limit, total }) };
+  const formattedItems = items.map(formatUserRecord);
+
+  return { items: formattedItems, meta: buildPaginationMeta({ page, limit, total }) };
 }
 
 async function listContacts(userId) {
@@ -91,53 +278,20 @@ async function listContacts(userId) {
  * collection. Keeping this as a dedicated endpoint prevents admin users from
  * unexpectedly appearing in the ordinary Contacts UI.
  */
-async function listEmergencySmsRecipients(userId, activeGroupId, allGroups) {
+async function listEmergencySmsRecipients(userId) {
   const currentUser = await User.findOne({ _id: userId, ...NOT_DELETED });
   if (!currentUser) throw ApiError.notFound('User not found');
-  if (allGroups) {
-    if (currentUser.role !== ROLES.ADMIN) throw ApiError.forbidden('Only Boss accounts can access all owned groups');
-    const owned = await Collection.find({ownerId: currentUser._id}).select('_id');
-    const ids = owned.map(collection => collection._id);
-    const memberships = await CollectionMembership.find({collectionId: {$in: ids}, status:'active'}).select('userId');
-    const userIds = [...new Map(memberships.map(m => [String(m.userId), m.userId])).values()];
-    const users = await User.find({_id:{$in:userIds},deletedAt:null,status:USER_STATUS.ACTIVE,mobileNumber:{$exists:true,$nin:['',null]}})
-      .select('_id username mobileNumber role');
-    const contactMemberships = await EmergencyContactMembership.find({collectionId:{$in:ids}}).select('contactId');
-    const contactIds = [...new Map(contactMemberships.map(m=>[String(m.contactId),m.contactId])).values()];
-    const contacts = await EmergencyContact.find({_id:{$in:contactIds}}).select('_id name mobileNumber');
-    const unique = new Map();
-    users.forEach(u=>unique.set(u.mobileNumber.replace(/[\s()-]/g,''),{_id:u._id,username:u.username,mobileNumber:u.mobileNumber}));
-    contacts.forEach(c=>unique.set(c.mobileNumber.replace(/[\s()-]/g,''),{_id:c._id,username:c.name,mobileNumber:c.mobileNumber,emergencyContact:true}));
-    return [...unique.values()];
-  }
-  let collectionId = activeGroupId || currentUser.collectionId;
-  if (collectionId) {
-    const membership = await CollectionMembership.findOne({userId, collectionId, status: 'active'});
-    if (!membership && String(currentUser.collectionId || '') !== String(collectionId)) {
-      throw ApiError.forbidden('You are not authorized to access this group');
-    }
-  }
-  if (!collectionId) return [];
+  if (!currentUser.collectionId) return [];
 
-  const users = await User.find({
+  return User.find({
     ...NOT_DELETED,
     status: USER_STATUS.ACTIVE,
     mobileNumber: { $exists: true, $nin: ['', null] },
     $or: [
       { role: ROLES.ADMIN },
-      { role: ROLES.USER, collectionId, _id: { $ne: userId } },
-      {_id: {$in: (await CollectionMembership.find({collectionId, status:'active'}).select('userId')).map(m=>m.userId)}},
+      { role: ROLES.USER, collectionId: currentUser.collectionId, _id: { $ne: userId } },
     ],
   }).select('_id username mobileNumber role collectionId').sort({ role: 1, username: 1 });
-
-  const contactMemberships = await EmergencyContactMembership.find({collectionId}).select('contactId');
-  const contacts = await EmergencyContact.find({_id: {$in: contactMemberships.map(m=>m.contactId)}})
-    .select('_id name mobileNumber');
-
-  const unique = new Map();
-  users.forEach(u => unique.set(u.mobileNumber.replace(/[\s()-]/g,''), {_id:u._id, username:u.username, mobileNumber:u.mobileNumber}));
-  contacts.forEach(c => unique.set(c.mobileNumber.replace(/[\s()-]/g,''), {_id:c._id, username:c.name, mobileNumber:c.mobileNumber, emergencyContact:true}));
-  return [...unique.values()];
 }
 
 async function getUserById(id) {
@@ -194,7 +348,7 @@ async function updateUser(id, { username, mobileNumber, email }) {
  * implementation of the missing function, following the exact same
  * pattern as updateUser above, plus the emergencyMessage field.
  */
-async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMessage, activeCollectionId }) {
+async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMessage }) {
   const user = await getUserById(id);
 
   if (username !== undefined) user.username = username;
@@ -205,11 +359,6 @@ async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMe
   if (emergencyMessage !== undefined) {
     const trimmed = typeof emergencyMessage === 'string' ? emergencyMessage.trim() : emergencyMessage;
     user.emergencyMessage = trimmed === null || trimmed === '' ? undefined : trimmed;
-  }
-  if (activeCollectionId !== undefined) {
-    const membership = await CollectionMembership.findOne({userId:id, collectionId:activeCollectionId, status:'active'});
-    if (!membership) throw ApiError.forbidden('You are not authorized to select this group');
-    user.activeCollectionId = activeCollectionId;
   }
 
   await user.save();
@@ -272,6 +421,9 @@ async function deleteUser(id) {
 
 module.exports = {
   createUser,
+  createOrAssignBoss,
+  removeUserFromCollection,
+  formatUserRecord,
   listUsers,
   listContacts,
   listEmergencySmsRecipients,

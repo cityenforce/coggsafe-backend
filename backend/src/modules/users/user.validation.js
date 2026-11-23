@@ -48,6 +48,44 @@ const createUserValidation = [
   body('role').not().exists().withMessage('role cannot be set on user creation'),
 ];
 
+const createBossValidation = [
+  body('username')
+    .trim()
+    .notEmpty()
+    .withMessage('Username is required')
+    .isLength({ min: 3, max: 50 })
+    .withMessage('Username must be between 3 and 50 characters')
+    .matches(USERNAME_REGEX)
+    .withMessage('Username may only contain letters, numbers, dots, underscores, hyphens and spaces'),
+  body('mobileNumber')
+    .trim()
+    .notEmpty()
+    .withMessage('Mobile number is required')
+    .matches(PHONE_REGEX)
+    .withMessage('Mobile number must include country code, e.g. +923001234567'),
+  body('password')
+    .optional({ checkFalsy: true })
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters'),
+  body('email')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isEmail()
+    .withMessage('Email must be a valid email address')
+    .normalizeEmail(),
+  body('collectionIds')
+    .isArray({ min: 1 })
+    .withMessage('collectionIds must be an array with at least one collection id'),
+  body('collectionIds.*')
+    .isMongoId()
+    .withMessage('Each collectionId must be a valid Mongo ID'),
+  body('groupRole')
+    .optional()
+    .isIn(['boss', 'user'])
+    .withMessage('groupRole must be either "boss" or "user"'),
+  body('role').not().exists().withMessage('role cannot be set on user creation'),
+];
+
 const userIdParamValidation = [param('id').isMongoId().withMessage('Invalid user id')];
 
 /**
@@ -91,7 +129,6 @@ const updateMyProfileValidation = [
   body('mobileNumber').optional().trim().matches(PHONE_REGEX),
   body('email').optional({nullable: true}).custom(value => value === null || value === '' || EMAIL_REGEX.test(value)),
   body('emergencyMessage').optional({nullable: true}).isString().trim().isLength({max: 500}),
-  body('activeCollectionId').optional().isMongoId(),
   body('role').not().exists(),
   body('status').not().exists(),
   body('password').not().exists(),
@@ -119,6 +156,7 @@ const listUsersValidation = [
 
 module.exports = {
   createUserValidation,
+  createBossValidation,
   updateUserValidation,
   setPasswordValidation,
   userIdParamValidation,

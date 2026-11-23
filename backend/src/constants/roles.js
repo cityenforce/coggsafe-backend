@@ -10,4 +10,12 @@ const ROLES = Object.freeze({
 
 const ALL_ROLES = Object.freeze(Object.values(ROLES));
 
-module.exports = { ROLES, ALL_ROLES };
+const GROUP_ROLES = Object.freeze({
+  BOSS: 'boss',
+  USER: 'user',
+  MEMBER: 'member',
+});
+
+const ALL_GROUP_ROLES = Object.freeze(Object.values(GROUP_ROLES));
+
+module.exports = { ROLES, ALL_ROLES, GROUP_ROLES, ALL_GROUP_ROLES };

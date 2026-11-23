@@ -9,21 +9,14 @@ const {
   collectionIdParamValidation,
   listCollectionsValidation,
   listCollectionUsersValidation,
-  addRemoveMemberValidation,
-  contactValidation,
-  removeContactValidation,
+  removeCollectionUserValidation,
 } = require('./collection.validation');
 const collectionController = require('./collection.controller');
 
 const router = express.Router();
 
-router.use(authenticate);
-
-// Available to every authenticated user for active-group selection.
-router.get('/mine', collectionController.listMyCollections);
-
-// Management routes are Boss/Admin-only.
-router.use(authorize(ROLES.ADMIN));
+// Every route in this module is Admin-only.
+router.use(authenticate, authorize(ROLES.ADMIN));
 
 router.post('/', createCollectionValidation, validateRequest, collectionController.createCollection);
 router.get('/', listCollectionsValidation, validateRequest, collectionController.listCollections);
@@ -31,11 +24,6 @@ router.get('/:id', collectionIdParamValidation, validateRequest, collectionContr
 router.patch('/:id', updateCollectionValidation, validateRequest, collectionController.updateCollection);
 router.delete('/:id', collectionIdParamValidation, validateRequest, collectionController.deleteCollection);
 router.get('/:id/users', listCollectionUsersValidation, validateRequest, collectionController.listCollectionUsers);
-router.post('/:id/members/:userId', addRemoveMemberValidation, validateRequest, collectionController.addCollectionMember);
-router.delete('/:id/members/:userId', addRemoveMemberValidation, validateRequest, collectionController.removeCollectionMember);
-router.get('/:id/members', collectionIdParamValidation, validateRequest, collectionController.listManagedCollectionUsers);
-router.get('/:id/contacts', collectionIdParamValidation, validateRequest, collectionController.listCollectionContacts);
-router.post('/:id/contacts', contactValidation, validateRequest, collectionController.addCollectionContact);
-router.delete('/:id/contacts/:contactId', removeContactValidation, validateRequest, collectionController.removeCollectionContact);
+router.delete('/:id/users/:userId', removeCollectionUserValidation, validateRequest, collectionController.removeCollectionUser);
 
 module.exports = router;

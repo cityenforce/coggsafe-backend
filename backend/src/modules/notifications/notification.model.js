@@ -56,7 +56,6 @@ const notificationSchema = new Schema(
 notificationSchema.index({ recipientUserId: 1, createdAt: -1 });
 notificationSchema.index({ recipientUserId: 1, isRead: 1 });
 notificationSchema.index({ sosId: 1 });
-notificationSchema.index({ sosId: 1, recipientUserId: 1 }, { unique: true });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 

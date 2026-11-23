@@ -5,6 +5,7 @@ const validateRequest = require('../../middlewares/validateRequest');
 const { ROLES } = require('../../constants/roles');
 const {
   createUserValidation,
+  createBossValidation,
   updateUserValidation,
   setPasswordValidation,
   userIdParamValidation,
@@ -21,6 +22,7 @@ router.patch('/me', authenticate, updateMyProfileValidation, validateRequest, us
 // authenticated self-service profile endpoint.
 router.use(authenticate, authorize(ROLES.ADMIN));
 
+router.post('/boss', createBossValidation, validateRequest, userController.createOrAssignBoss);
 router.post('/', createUserValidation, validateRequest, userController.createUser);
 router.get('/', listUsersValidation, validateRequest, userController.listUsers);
 router.get('/:id', userIdParamValidation, validateRequest, userController.getUser);

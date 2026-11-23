@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {createUser, deleteCollection, deleteUser, getUserCredentials, listCollectionUsers, listCollections, setUserPassword, updateCollection, updateUser} from '../../api/resources';
+import {createUser, deleteCollection, deleteUser, removeCollectionUser, getUserCredentials, listCollectionUsers, listCollections, setUserPassword, updateCollection, updateUser} from '../../api/resources';
 import {rememberCredential} from '../../utils/adminCredentials';
 import Icon from '../../components/Icon';
 import {getUserInitials} from '../../utils/userInitials';
@@ -239,19 +239,19 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
     const memberId = member?._id || member?.id;
     if (!memberId) return;
 
-    Alert.alert('Delete user', `Are you sure you want to delete ${member.username || 'this user'}?`, [
+    Alert.alert('Remove user from group', `Are you sure you want to remove ${member.username || 'this user'} from this group? Their account will not be deleted.`, [
       {text: 'Cancel', style: 'cancel'},
       {
-        text: 'Delete',
+        text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteUser(token, memberId);
+            await removeCollectionUser(token, selected._id, memberId);
             memberSnapshots.delete(`${token}:${selected._id}`);
             setMembers(current => current.filter(item => (item._id || item.id) !== memberId));
-            Alert.alert('User deleted', 'The user has been removed.');
+            Alert.alert('User removed', 'The user has been removed from this group.');
           } catch (requestError) {
-            Alert.alert('Unable to delete user', requestError.message || 'Please try again.');
+            Alert.alert('Unable to remove user', requestError.message || 'Please try again.');
           }
         },
       },

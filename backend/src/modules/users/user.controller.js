@@ -14,6 +14,23 @@ const createUser = asyncHandler(async (req, res) => {
   ApiResponse.send(res, { statusCode: httpStatus.CREATED, message: 'User created', data: { user } });
 });
 
+const createOrAssignBoss = asyncHandler(async (req, res) => {
+  const { username, mobileNumber, password, email, collectionIds, groupRole } = req.body;
+  const result = await userService.createOrAssignBoss({
+    username,
+    mobileNumber,
+    password,
+    email,
+    collectionIds,
+    groupRole: groupRole || 'boss',
+  });
+  ApiResponse.send(res, {
+    statusCode: result.isExistingUser ? httpStatus.OK : httpStatus.CREATED,
+    message: result.isExistingUser ? 'Boss role assigned to existing user' : 'Boss user created',
+    data: result,
+  });
+});
+
 const listUsers = asyncHandler(async (req, res) => {
   const { items, meta } = await userService.listUsers(req.query);
   ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'Users retrieved', data: { users: items, meta } });
@@ -25,13 +42,13 @@ const listMyContacts = asyncHandler(async (req, res) => {
 });
 
 const listMyEmergencySmsRecipients = asyncHandler(async (req, res) => {
-  const contacts = await userService.listEmergencySmsRecipients(req.user.id, req.query.activeGroupId, req.query.allGroups === 'true');
+  const contacts = await userService.listEmergencySmsRecipients(req.user.id);
   ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Emergency SMS recipients retrieved', data: {contacts}});
 });
 
 const updateMyProfile = asyncHandler(async (req, res) => {
-  const {username, mobileNumber, email, emergencyMessage, activeCollectionId} = req.body;
-  const user = await userService.updateOwnProfile(req.user.id, {username, mobileNumber, email, emergencyMessage, activeCollectionId});
+  const {username, mobileNumber, email, emergencyMessage} = req.body;
+  const user = await userService.updateOwnProfile(req.user.id, {username, mobileNumber, email, emergencyMessage});
   ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Profile updated', data: {user}});
 });
 
@@ -42,7 +59,7 @@ const updateMyProfile = asyncHandler(async (req, res) => {
  */
 const getUser = asyncHandler(async (req, res) => {
   const user = await userService.getUserById(req.params.id);
-  ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'User retrieved', data: { user } });
+  ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'User retrieved', data: { user: userService.formatUserRecord(user) } });
 });
 
 const updateUser = asyncHandler(async (req, res) => {
@@ -84,6 +101,7 @@ const deleteUser = asyncHandler(async (req, res) => {
 
 module.exports = {
   createUser,
+  createOrAssignBoss,
   listUsers,
   listMyContacts,
   listMyEmergencySmsRecipients,

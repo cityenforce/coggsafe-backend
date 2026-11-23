@@ -166,6 +166,20 @@ const AdminDashboardScreen = ({
             <TouchableOpacity
               style={styles.quickAction}
               activeOpacity={0.75}
+              onPress={onUsers}>
+
+              <View style={styles.quickActionIcon}>
+                <Icon name="user" size={24} color="#111827" />
+              </View>
+
+              <Text style={styles.quickActionText}>
+                Users
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickAction}
+              activeOpacity={0.75}
               onPress={onCollections}>
 
               <View style={styles.quickActionIcon}>

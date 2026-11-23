@@ -5,8 +5,6 @@ const paginationValidation = require('../../utils/paginationValidation');
 const sosIdParamValidation = [param('id').isMongoId().withMessage('Invalid SOS id')];
 
 const createSosValidation = [
-  body('activeGroupId').optional().isMongoId().withMessage('activeGroupId must be a valid group id'),
-  body('allGroups').optional().isBoolean().withMessage('allGroups must be a boolean'),
   body('idempotencyKey')
     .optional()
     .trim()

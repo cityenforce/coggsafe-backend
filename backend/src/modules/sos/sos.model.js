@@ -86,17 +86,6 @@ const sosSchema = new Schema(
       ref: 'Collection',
       required: true,
     },
-    collectionIds: [{
-      type: Schema.Types.ObjectId,
-      ref: 'Collection',
-    }],
-    recipientDeliveryStatus: [{
-      recipientType: { type: String, enum: ['user', 'emergencyContact', 'boss'], required: true },
-      recipientId: { type: String, required: true },
-      channel: { type: String, required: true },
-      status: { type: String, enum: ['pending', 'success', 'failed', 'skipped'], default: 'pending' },
-      updatedAt: { type: Date, default: null },
-    }],
     status: {
       type: String,
       enum: Object.values(SOS_STATUS),
@@ -130,8 +119,6 @@ const sosSchema = new Schema(
     cancelledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     deactivatedAt: { type: Date, default: null },
     deactivatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    resolvedAt: { type: Date, default: null },
-    resolvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 
     location: { type: locationSchema, default: () => ({}) },
     liveLocation: { type: liveLocationSchema, default: () => ({}) },

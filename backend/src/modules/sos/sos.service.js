@@ -15,8 +15,6 @@ const storageProvider = require('../../services/storage/storage.provider');
 const dispatchService = require('./dispatch.service');
 const schedulerService = require('../scheduler/scheduler.service');
 const { resolveReportDateRange } = require('./reportDate.util');
-const Collection = require('../collections/collection.model');
-const CollectionMembership = require('../collections/collectionMembership.model');
 
 // ---------------------------------------------------------------------
 // The remaining time-based transition:
@@ -155,10 +153,8 @@ async function getSosById(id, reqUser) {
       && requester.status === USER_STATUS.ACTIVE
       && !requester.deletedAt
       && requester.role === ROLES.USER
-      && (
-        (requester.collectionId && String(requester.collectionId) === String(sos.collectionId))
-        || (await CollectionMembership.exists({userId: reqUser.id, collectionId: {$in: sos.collectionIds?.length ? sos.collectionIds : [sos.collectionId]}, status:'active'}))
-      );
+      && requester.collectionId
+      && String(requester.collectionId) === String(sos.collectionId);
     if (!isCollectionMember) {
       throw ApiError.forbidden('You do not have permission to access this SOS');
     }
@@ -212,31 +208,14 @@ async function getOwnedSosOrThrow(id, reqUser, message) {
  * resulting duplicate-key error is treated as "the other retry won",
  * not as a real conflict).
  */
-async function createSos({ userId, idempotencyKey, location, emergencyMessage, activeGroupId, allGroups }) {
+async function createSos({ userId, idempotencyKey, location, emergencyMessage }) {
   const user = await User.findById(userId);
   if (!user) {
     throw ApiError.unauthorized('User no longer exists');
   }
-  let selectedCollections = [];
-  if (allGroups === true) {
-    if (user.role !== ROLES.ADMIN) {
-      throw ApiError.forbidden('Only Boss accounts can send SOS to all owned groups');
-    }
-    selectedCollections = await Collection.find({ownerId: user._id});
-  } else {
-    const requestedId = activeGroupId || user.activeCollectionId || user.collectionId;
-    if (!requestedId) {
-      throw ApiError.badRequest('You are not assigned to a collection and cannot trigger an SOS');
-    }
-    const membership = await CollectionMembership.findOne({userId: user._id, collectionId: requestedId, status: 'active'});
-    if (!membership && String(user.collectionId || '') !== String(requestedId)) {
-      throw ApiError.forbidden('You are not authorized to trigger SOS for this group');
-    }
-    const collection = await Collection.findById(requestedId);
-    if (!collection) throw ApiError.badRequest('Selected group no longer exists');
-    selectedCollections = [collection];
+  if (!user.collectionId) {
+    throw ApiError.badRequest('You are not assigned to a collection and cannot trigger an SOS');
   }
-  if (!selectedCollections.length) throw ApiError.badRequest('No eligible groups were selected');
 
   if (idempotencyKey) {
     const existing = await Sos.findOne({ userId, idempotencyKey });
@@ -251,8 +230,7 @@ async function createSos({ userId, idempotencyKey, location, emergencyMessage, a
   try {
     sos = await Sos.create({
       userId: user._id,
-      collectionId: selectedCollections[0]._id,
-      collectionIds: selectedCollections.map(collection => collection._id),
+      collectionId: user.collectionId,
       emergencyMessage: resolveEmergencyMessage(user, emergencyMessage),
       emergencyToken: generateEmergencyToken(),
       idempotencyKey: idempotencyKey || undefined,
@@ -380,13 +358,12 @@ async function getSosReports(query, reqUser) {
   const limit = Math.min(1000, Math.max(1, parseInt(query.limit, 10) || 200));
   const skip = (page - 1) * limit;
 
-  const [records, totalCount, activeCount, deactivatedCount, resolvedCount] = await Promise.all([
+  const [records, totalCount, activeCount, deactivatedCount] = await Promise.all([
     Sos.find(filter)
       .populate('userId', 'username mobileNumber email')
-      .populate('collectionId', 'name type emergencyCallNumber')
+      .populate('collectionId', 'name type')
       .populate('cancelledBy', 'username')
       .populate('deactivatedBy', 'username')
-      .populate('resolvedBy', 'username')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -394,7 +371,6 @@ async function getSosReports(query, reqUser) {
     Sos.countDocuments(filter),
     Sos.countDocuments({ ...filter, status: SOS_STATUS.ACTIVE }),
     Sos.countDocuments({ ...filter, status: SOS_STATUS.DEACTIVATED }),
-    Sos.countDocuments({ ...filter, status: SOS_STATUS.RESOLVED }),
   ]);
 
   const formattedRecords = records.map((sos) => {
@@ -409,9 +385,7 @@ async function getSosReports(query, reqUser) {
 
     if (createdAtTime) {
       let endTime = null;
-      if (sos.resolvedAt) {
-        endTime = new Date(sos.resolvedAt).getTime();
-      } else if (sos.deactivatedAt) {
+      if (sos.deactivatedAt) {
         endTime = new Date(sos.deactivatedAt).getTime();
       } else if (sos.cancelledAt) {
         endTime = new Date(sos.cancelledAt).getTime();
@@ -436,10 +410,6 @@ async function getSosReports(query, reqUser) {
 
     const comps = sos.components || {};
 
-    const liveLoc = sos.liveLocation || {};
-    const liveLastLoc = liveLoc.lastLocation || {};
-    const hasLiveCoords = liveLastLoc.latitude != null && liveLastLoc.longitude != null;
-
     return {
       id: String(sos._id),
       eventId: String(sos._id),
@@ -454,42 +424,27 @@ async function getSosReports(query, reqUser) {
       activatedAt: sos.activatedAt || sos.createdAt,
       deactivatedAt: sos.deactivatedAt || null,
       cancelledAt: sos.cancelledAt || null,
-      resolvedAt: sos.resolvedAt || null,
       deactivatedBy: sos.deactivatedBy ? (sos.deactivatedBy.username || String(sos.deactivatedBy)) : null,
       cancelledBy: sos.cancelledBy ? (sos.cancelledBy.username || String(sos.cancelledBy)) : null,
-      resolvedBy: sos.resolvedBy ? (sos.resolvedBy.username || String(sos.resolvedBy)) : null,
 
       user: {
-        id: user._id ? String(user._id) : (user.id || 'Deleted User'),
-        name: user.username || (sos.emergencyMessage?.match(/I am ([^,]+)/)?.[1]) || 'Deleted User',
+        id: user._id ? String(user._id) : (user.id || 'Not Available'),
+        name: user.username || 'Not Available',
         mobileNumber: user.mobileNumber || 'Not Available',
         email: user.email || 'Not Available',
-        groupName: collection.name || 'Deleted Group',
-        groupType: collection.type || 'Standard',
-        emergencyCallNumber: collection.emergencyCallNumber || 'Not Configured',
+        groupName: collection.name || 'Not Available',
+        groupType: collection.type || 'Not Available',
       },
 
       location: {
         latitude: hasCoordinates ? loc.latitude : null,
         longitude: hasCoordinates ? loc.longitude : null,
         accuracy: loc.accuracy != null ? `${loc.accuracy.toFixed(1)}m` : 'Not Available',
-        capturedAt: loc.capturedAt || sos.createdAt,
+        capturedAt: loc.capturedAt || 'Not Available',
         source: loc.source || 'GPS',
-        status: loc.status || 'captured',
+        status: loc.status || 'Not Available',
         coordinatesText: hasCoordinates ? `${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)}` : 'Location Not Available',
         mapsUrl: hasCoordinates ? `https://maps.google.com/?q=${loc.latitude},${loc.longitude}` : null,
-      },
-
-      liveLocation: {
-        status: liveLoc.status || 'not_started',
-        latitude: hasLiveCoords ? liveLastLoc.latitude : null,
-        longitude: hasLiveCoords ? liveLastLoc.longitude : null,
-        accuracy: liveLastLoc.accuracy != null ? `${liveLastLoc.accuracy.toFixed(1)}m` : 'Not Available',
-        capturedAt: liveLastLoc.capturedAt || null,
-        source: liveLastLoc.source || 'GPS',
-        coordinatesText: hasLiveCoords ? `${liveLastLoc.latitude.toFixed(6)}, ${liveLastLoc.longitude.toFixed(6)}` : null,
-        mapsUrl: hasLiveCoords ? `https://maps.google.com/?q=${liveLastLoc.latitude},${liveLastLoc.longitude}` : null,
-        isSameAsInitial: !hasLiveCoords || (hasCoordinates && Math.abs(liveLastLoc.latitude - loc.latitude) < 0.0001 && Math.abs(liveLastLoc.longitude - loc.longitude) < 0.0001),
       },
 
       media: {
@@ -498,29 +453,26 @@ async function getSosReports(query, reqUser) {
           status: comps.frontImage?.status || 'Not Available',
           mimeType: comps.frontImage?.mimeType || null,
           hasStorageRef: Boolean(comps.frontImage?.storageRef),
-          storageRef: comps.frontImage?.storageRef || null,
         },
         backImage: {
           available: comps.backImage?.status === COMPONENT_STATUS.SUCCESS,
           status: comps.backImage?.status || 'Not Available',
           mimeType: comps.backImage?.mimeType || null,
           hasStorageRef: Boolean(comps.backImage?.storageRef),
-          storageRef: comps.backImage?.storageRef || null,
         },
         audio: {
           available: comps.audio?.status === COMPONENT_STATUS.SUCCESS,
           status: comps.audio?.status || 'Not Available',
           mimeType: comps.audio?.mimeType || null,
           hasStorageRef: Boolean(comps.audio?.storageRef),
-          storageRef: comps.audio?.storageRef || null,
         },
       },
 
       channels: {
-        sms: comps.sms?.status === COMPONENT_STATUS.SUCCESS ? 'success' : (comps.sms?.error ? `failed: ${comps.sms.error}` : (comps.sms?.status || 'Not Configured')),
-        email: comps.email?.status === COMPONENT_STATUS.SUCCESS ? 'success' : (comps.email?.error ? `failed: ${comps.email.error}` : (comps.email?.status || 'Not Configured')),
-        push: comps.push?.status === COMPONENT_STATUS.SUCCESS ? 'success' : (comps.push?.error ? `failed: ${comps.push.error}` : (comps.push?.status || 'Not Configured')),
-        call: comps.call?.status === COMPONENT_STATUS.SUCCESS ? 'success' : (comps.call?.error ? `failed: ${comps.call.error}` : (comps.call?.status || 'Not Configured')),
+        sms: comps.sms?.status || 'Not Available',
+        email: comps.email?.status || 'Not Available',
+        push: comps.push?.status || 'Not Available',
+        call: comps.call?.status || 'Not Available',
       },
     };
   });
@@ -537,7 +489,6 @@ async function getSosReports(query, reqUser) {
       generatedAt: new Date().toISOString(),
       generatedBy: {
         id: String(reqUser.id || reqUser._id),
-        name: reqUser.username || 'CoGG Safe User',
         username: reqUser.username || 'CoGG Safe User',
         role: reqUser.role,
         mobileNumber: reqUser.mobileNumber || null,
@@ -547,8 +498,7 @@ async function getSosReports(query, reqUser) {
         totalRecords: totalCount,
         activeRecords: activeCount,
         deactivatedRecords: deactivatedCount,
-        resolvedRecords: resolvedCount,
-        cancelledRecords: Math.max(0, totalCount - activeCount - deactivatedCount - resolvedCount),
+        cancelledRecords: totalCount - activeCount - deactivatedCount,
       },
       pagination: {
         page,
@@ -614,31 +564,6 @@ async function deactivateSos(id, reqUser) {
   }
 
   if (updated.liveLocation.status === LIVE_LOCATION_STATUS.ACTIVE) {
-    await stopLiveLocationInternal(id, LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED);
-    updated.liveLocation.status = LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED;
-  }
-
-  return updated;
-}
-
-async function resolveSos(id, reqUser) {
-  const sos = await getSosOrThrow(id);
-
-  if (![SOS_STATUS.ACTIVE, SOS_STATUS.DEACTIVATED].includes(sos.status)) {
-    throw ApiError.conflict('Only an active or deactivated SOS can be resolved');
-  }
-
-  const updated = await Sos.findOneAndUpdate(
-    { _id: id },
-    { $set: { status: SOS_STATUS.RESOLVED, resolvedAt: new Date(), resolvedBy: reqUser.id } },
-    { new: true }
-  );
-
-  if (!updated) {
-    throw ApiError.conflict('This SOS can no longer be resolved');
-  }
-
-  if (updated.liveLocation?.status === LIVE_LOCATION_STATUS.ACTIVE) {
     await stopLiveLocationInternal(id, LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED);
     updated.liveLocation.status = LIVE_LOCATION_STATUS.STOPPED_SOS_DEACTIVATED;
   }
@@ -895,7 +820,6 @@ module.exports = {
   dispatchSosAfterPersistence,
   cancelSos,
   deactivateSos,
-  resolveSos,
   deleteSos,
   reportLocation,
   reportMedia,

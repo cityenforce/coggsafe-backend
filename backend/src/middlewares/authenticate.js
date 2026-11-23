@@ -3,7 +3,6 @@ const ApiError = require('../utils/ApiError');
 const User = require('../modules/users/user.model');
 const Collection = require('../modules/collections/collection.model');
 const { USER_STATUS } = require('../constants/sosConstants');
-const CollectionMembership = require('../modules/collections/collectionMembership.model');
 
 /**
  * Verifies the Bearer token, then loads the user fresh from the database
@@ -63,8 +62,6 @@ async function authenticate(req, res, next) {
     const collection = user.collectionId
       ? await Collection.findById(user.collectionId).select('name type emergencyCallNumber')
       : null;
-    const memberships = await CollectionMembership.find({userId: user._id, status:'active'}).select('collectionId');
-    const collectionIds = memberships.map(membership => membership.collectionId);
 
     req.user = {
       id: user._id.toString(),
@@ -75,8 +72,6 @@ async function authenticate(req, res, next) {
       role: user.role, // fresh from DB, authoritative
       status: user.status,
       collectionId: user.collectionId,
-      activeCollectionId: user.activeCollectionId,
-      collectionIds,
       emergencyMessage: user.emergencyMessage,
       collection,
     };

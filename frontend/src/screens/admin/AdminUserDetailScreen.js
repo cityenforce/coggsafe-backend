@@ -218,6 +218,22 @@ const AdminUserDetailScreen = ({
             {selectedUser.name}
           </Text>
 
+          <View style={styles.roleBadgeWrap}>
+            <View style={[
+              styles.roleBadge,
+              selectedUser.displayRole === 'Boss' ? styles.roleBadgeBoss :
+              selectedUser.displayRole === 'Admin' ? styles.roleBadgeAdmin : styles.roleBadgeUser
+            ]}>
+              <Text style={[
+                styles.roleBadgeText,
+                selectedUser.displayRole === 'Boss' ? styles.roleBadgeBossText :
+                selectedUser.displayRole === 'Admin' ? styles.roleBadgeAdminText : styles.roleBadgeUserText
+              ]}>
+                {selectedUser.displayRole || 'User'}
+              </Text>
+            </View>
+          </View>
+
           <View
             style={[
               styles.statusBadge,
@@ -307,6 +323,52 @@ const AdminUserDetailScreen = ({
               </Text>
             </View>
           </View>
+        </View>
+
+        {/* Assigned Groups & Roles */}
+        <Text style={styles.sectionTitle}>
+          ASSIGNED GROUPS & ROLES
+        </Text>
+
+        <View style={styles.infoCard}>
+          {selectedUser.assignedGroups && selectedUser.assignedGroups.length > 0 ? (
+            selectedUser.assignedGroups.map((groupItem, gIndex) => {
+              const isGroupBoss = groupItem.role === 'boss';
+              return (
+                <React.Fragment key={groupItem.id || groupItem._id || gIndex}>
+                  {gIndex > 0 && <View style={styles.divider} />}
+                  <View style={styles.infoRow}>
+                    <View style={[styles.infoIconBox, isGroupBoss && styles.bossGroupIconBox]}>
+                      <Text style={[styles.infoIcon, isGroupBoss && styles.bossGroupIcon]}>
+                        {isGroupBoss ? '★' : '◫'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoContent}>
+                      <View style={styles.groupDetailTitleRow}>
+                        <Text style={styles.infoLabel}>
+                          {groupItem.name || 'Group'}
+                        </Text>
+                        <View style={[styles.groupRoleBadge, isGroupBoss && styles.groupRoleBadgeBoss]}>
+                          <Text style={[styles.groupRoleBadgeText, isGroupBoss && styles.groupRoleBadgeBossText]}>
+                            {isGroupBoss ? 'BOSS' : 'USER'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.infoValue}>
+                        Type: {groupItem.type || 'Group'} · Emergency Call: {groupItem.emergencyCallNumber || 'None'}
+                      </Text>
+                    </View>
+                  </View>
+                </React.Fragment>
+              );
+            })
+          ) : (
+            <View style={styles.infoRow}>
+              <Text style={styles.noGroupsText}>No groups currently assigned to this user.</Text>
+            </View>
+          )}
         </View>
 
         {/* Account Activity */}
@@ -452,9 +514,20 @@ const AdminUserDetailScreen = ({
           ADMIN ACTIONS
         </Text>
 
-        {!isEditing ? <TouchableOpacity style={styles.editUserAction} onPress={() => setIsEditing(true)}>
-          <Text style={styles.editUserActionText}>Edit user details</Text>
-        </TouchableOpacity> : null}
+        {selectedUser.isMembershipOnly ? (
+          <View style={styles.membershipOnlyNoticeBox}>
+            <Text style={styles.membershipOnlyNoticeTitle}>ℹ Membership-Only Account</Text>
+            <Text style={styles.membershipOnlyNoticeText}>
+              This user exists only through group membership. Edit and Delete controls are not available on this screen. Manage this user from the Groups section.
+            </Text>
+          </View>
+        ) : (
+          !isEditing ? (
+            <TouchableOpacity style={styles.editUserAction} onPress={() => setIsEditing(true)}>
+              <Text style={styles.editUserActionText}>Edit user details</Text>
+            </TouchableOpacity>
+          ) : null
+        )}
 
         <View style={styles.actionCard}>
           <TouchableOpacity
@@ -498,49 +571,53 @@ const AdminUserDetailScreen = ({
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.divider} />
+          {!selectedUser.isMembershipOnly && (
+            <>
+              <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={[styles.actionRow, submitting && styles.disabledAction]}
-            activeOpacity={0.8}
-            onPress={handleDeleteUser}>
-            <View
-              style={[
-                styles.actionIconBox,
-                styles.deleteIconBox,
-              ]}>
-              <Text
-                style={[
-                  styles.actionIcon,
-                  styles.deleteIcon,
-                ]}>
-                ×
-              </Text>
-            </View>
+              <TouchableOpacity
+                style={[styles.actionRow, submitting && styles.disabledAction]}
+                activeOpacity={0.8}
+                onPress={handleDeleteUser}>
+                <View
+                  style={[
+                    styles.actionIconBox,
+                    styles.deleteIconBox,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.actionIcon,
+                      styles.deleteIcon,
+                    ]}>
+                    ×
+                  </Text>
+                </View>
 
-            <View style={styles.actionContent}>
-              <Text
-                style={[
-                  styles.actionTitle,
-                  styles.deleteTitle,
-                ]}>
-                Delete User
-              </Text>
+                <View style={styles.actionContent}>
+                  <Text
+                    style={[
+                      styles.actionTitle,
+                      styles.deleteTitle,
+                    ]}>
+                    Delete User
+                  </Text>
 
-              <Text style={styles.actionDescription}>
-                Permanently remove this account and its
-                associated data.
-              </Text>
-            </View>
+                  <Text style={styles.actionDescription}>
+                    Permanently remove this account and its
+                    associated data.
+                  </Text>
+                </View>
 
-            <Text
-              style={[
-                styles.actionArrow,
-                styles.deleteArrow,
-              ]}>
-              ›
-            </Text>
-          </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.actionArrow,
+                    styles.deleteArrow,
+                  ]}>
+                  ›
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* Warning */}
@@ -1094,6 +1171,104 @@ const styles = StyleSheet.create({
   editSaveText: {color: '#FFFFFF', fontWeight: '900'},
   editUserAction: {backgroundColor: '#1A1A1A', borderRadius: 10, minHeight: 46, alignItems: 'center', justifyContent: 'center', marginBottom: 12},
   editUserActionText: {color: '#FFFFFF', fontWeight: '900'},
+
+  /* Role Badges */
+  roleBadgeWrap: {
+    marginVertical: 6,
+  },
+  roleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'center',
+  },
+  roleBadgeBoss: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  roleBadgeBossText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  roleBadgeAdmin: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#DDD6FE',
+  },
+  roleBadgeAdminText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#6D28D9',
+  },
+  roleBadgeUser: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
+  roleBadgeUserText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4B5563',
+  },
+
+  /* Groups Detail */
+  bossGroupIconBox: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  bossGroupIcon: {
+    color: '#B45309',
+  },
+  groupDetailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  groupRoleBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  groupRoleBadgeBoss: {
+    backgroundColor: '#FEF3C7',
+  },
+  groupRoleBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#6B7280',
+  },
+  groupRoleBadgeBossText: {
+    color: '#92400E',
+  },
+  noGroupsText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    paddingVertical: 8,
+  },
+
+  /* Notice Box for Membership-Only */
+  membershipOnlyNoticeBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  membershipOnlyNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#334155',
+    marginBottom: 4,
+  },
+  membershipOnlyNoticeText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+  },
 
   bottomSpace: {
     height: 20,

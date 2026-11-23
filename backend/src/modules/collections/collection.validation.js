@@ -56,18 +56,10 @@ const listCollectionsValidation = [
 ];
 
 const listCollectionUsersValidation = [...collectionIdParamValidation, ...paginationValidation];
-const addRemoveMemberValidation = [
-  ...collectionIdParamValidation,
-  param('userId').isMongoId().withMessage('Invalid userId'),
-];
-const contactValidation = [
-  ...collectionIdParamValidation,
-  body('name').trim().notEmpty().isLength({min:1,max:100}),
-  body('mobileNumber').trim().notEmpty().matches(PHONE_REGEX),
-];
-const removeContactValidation = [
-  ...collectionIdParamValidation,
-  param('contactId').isMongoId().withMessage('Invalid contactId'),
+
+const removeCollectionUserValidation = [
+  param('id').isMongoId().withMessage('Invalid collection id'),
+  param('userId').isMongoId().withMessage('Invalid user id'),
 ];
 
 module.exports = {
@@ -76,7 +68,5 @@ module.exports = {
   collectionIdParamValidation,
   listCollectionsValidation,
   listCollectionUsersValidation,
-  addRemoveMemberValidation,
-  contactValidation,
-  removeContactValidation,
+  removeCollectionUserValidation,
 };

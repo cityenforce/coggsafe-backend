@@ -68,10 +68,27 @@ const userSchema = new Schema(
       ref: 'Collection',
       default: null,
     },
-    activeCollectionId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Collection',
-      default: null,
+    groupMemberships: [
+      {
+        collectionId: {
+          type: Schema.Types.ObjectId,
+          ref: 'Collection',
+          required: true,
+        },
+        role: {
+          type: String,
+          enum: ['boss', 'user', 'member'],
+          default: 'user',
+        },
+        assignedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    adminCreated: {
+      type: Boolean,
+      default: false,
     },
     emergencyMessage: {
       type: String,
@@ -105,8 +122,23 @@ const userSchema = new Schema(
 );
 
 userSchema.index({ collectionId: 1 });
+userSchema.index({ 'groupMemberships.collectionId': 1 });
+userSchema.index({ adminCreated: 1 });
 userSchema.index({ status: 1 });
 userSchema.index({ deletedAt: 1 });
+
+userSchema.pre('save', function syncCollectionMemberships(next) {
+  if (this.collectionId && (!this.groupMemberships || this.groupMemberships.length === 0)) {
+    this.groupMemberships = [{
+      collectionId: this.collectionId,
+      role: 'user',
+      assignedAt: new Date(),
+    }];
+  } else if ((!this.collectionId) && this.groupMemberships && this.groupMemberships.length > 0) {
+    this.collectionId = this.groupMemberships[0].collectionId;
+  }
+  next();
+});
 
 /**
  * Hashes and sets the password. This is the ONLY way passwordHash should

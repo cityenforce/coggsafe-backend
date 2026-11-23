@@ -36,15 +36,8 @@ function withEmergencyLink(sos, req = null) {
  * set by the `authenticate` middleware from the verified token.
  */
 const createSos = asyncHandler(async (req, res) => {
-  const { idempotencyKey, location, emergencyMessage, activeGroupId, allGroups } = req.body;
-  const { sos, alreadyExisted } = await sosService.createSos({
-    userId: req.user.id,
-    idempotencyKey,
-    location,
-    emergencyMessage,
-    activeGroupId,
-    allGroups,
-  });
+  const { idempotencyKey, location, emergencyMessage } = req.body;
+    const { sos, alreadyExisted } = await sosService.createSos({ userId: req.user.id, idempotencyKey, location, emergencyMessage });
   
   ApiResponse.send(res, {
     statusCode: alreadyExisted ? httpStatus.OK : httpStatus.CREATED,
@@ -85,11 +78,6 @@ const cancelSos = asyncHandler(async (req, res) => {
 const deactivateSos = asyncHandler(async (req, res) => {
   const sos = await sosService.deactivateSos(req.params.id, req.user);
   ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'SOS deactivated', data: { sos: withEmergencyLink(sos, req) } });
-});
-
-const resolveSos = asyncHandler(async (req, res) => {
-  const sos = await sosService.resolveSos(req.params.id, req.user);
-  ApiResponse.send(res, { statusCode: httpStatus.OK, message: 'SOS resolved', data: { sos: withEmergencyLink(sos, req) } });
 });
 
 const deleteSos = asyncHandler(async (req, res) => {
@@ -218,7 +206,6 @@ module.exports = {
   getSos,
   cancelSos,
   deactivateSos,
-  resolveSos,
   deleteSos,
   reportLocation,
   reportMedia,
