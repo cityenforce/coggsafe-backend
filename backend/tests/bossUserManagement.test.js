@@ -299,5 +299,49 @@ describe('Admin Panel User Management & Add Boss Feature', () => {
     expect(sosRes.body.data.sos.status).toBe('active');
     expect(sosRes.body.data.sos.collectionId.toString()).toBe(col._id.toString());
   });
+
+  test('7. Contacts endpoint returns members from all assigned groups', async () => {
+    const { token: adminToken } = await createUserAndLogin(ROLES.ADMIN);
+    const col1 = await createTestCollection('Group 1');
+    const col2 = await createTestCollection('Group 2');
+
+    // Create a boss assigned to Group 1 and Group 2
+    await request(app)
+      .post('/api/users/boss')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'boss_multi_group',
+        mobileNumber: '+923008881111',
+        password: 'Passw0rd123!',
+        collectionIds: [col1._id.toString(), col2._id.toString()],
+      });
+
+    // Create a member in Group 2 only
+    await request(app)
+      .post('/api/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'group2_member',
+        mobileNumber: '+923008882222',
+        password: 'Passw0rd123!',
+        collectionId: col2._id.toString(),
+      });
+
+    // Login as boss
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'boss_multi_group', password: 'Passw0rd123!' });
+    const bossToken = loginRes.body.data.token;
+
+    // Call /api/contacts
+    const contactsRes = await request(app)
+      .get('/api/contacts')
+      .set('Authorization', `Bearer ${bossToken}`);
+
+    expect(contactsRes.status).toBe(200);
+    const contacts = contactsRes.body.data.contacts;
+    const memberFound = contacts.find(c => c.username === 'group2_member');
+    expect(memberFound).toBeDefined();
+  });
 });
 

@@ -36,8 +36,8 @@ export const stopLiveLocation = (token, id) => request(`/sos/${id}/live-location
 export const getLiveLocation = (token, id, params, options = {}) => request(`/sos/${id}/live-location${queryString(params)}`, {token, ...options});
 
 export const listUsers = (token, params, options = {}) => request(`/users${queryString(params)}`, {token, ...options});
-export const listContacts = token => request('/contacts', {token});
-export const listEmergencySmsRecipients = token => request('/contacts/emergency-sms', {token});
+export const listContacts = (token, options = {}) => request('/contacts', {token, forceRefresh: true, ...options});
+export const listEmergencySmsRecipients = (token, options = {}) => request('/contacts/emergency-sms', {token, forceRefresh: true, ...options});
 export const updateMyProfile = (token, body) => request('/users/me', {method: 'PATCH', token, body});
 export const getUser = (token, id) => request(`/users/${id}`, {token});
 export const createUser = (token, body) => request('/users', {method: 'POST', token, body});

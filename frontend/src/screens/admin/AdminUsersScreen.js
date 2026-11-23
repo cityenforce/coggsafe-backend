@@ -250,145 +250,154 @@ const AdminUsersScreen = ({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.container}>
-        {editingUser ? (
-          <InlineUserForm
-            editMode
-            form={editForm}
-            setForm={setEditForm}
-            submitting={submitting}
-            onCancel={() => {setEditingUser(null); setEditForm(null);}}
-            onSubmit={saveUserEdit}
-          />
-        ) : null}
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        stickyHeaderIndices={[2]}>
 
-        {/* ================= PROMINENT ADD BOSS BANNER BUTTON ================= */}
-        <View style={styles.addBossBannerRow}>
-          <TouchableOpacity
-            style={styles.addBossButton}
-            activeOpacity={0.85}
-            onPress={() => setShowAddBossModal(true)}>
-            <View style={styles.addBossIconBox}>
-              <Text style={styles.addBossPlus}>+</Text>
-            </View>
-            <View style={styles.addBossTextContent}>
-              <View style={styles.addBossTitleRow}>
-                <Text style={styles.addBossTitle}>Add Boss</Text>
-                <View style={styles.addBossTag}>
-                  <Text style={styles.addBossTagText}>MULTI-GROUP</Text>
-                </View>
-              </View>
-              <Text style={styles.addBossSubtitle}>
-                Create or assign group-scoped Boss permissions
-              </Text>
-            </View>
-            <Text style={styles.addBossArrow}>›</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ================= SECTION 0: EDIT FORM & ADD BOSS BANNER ================= */}
+        <View style={styles.topBannerSection}>
+          {editingUser ? (
+            <InlineUserForm
+              editMode
+              form={editForm}
+              setForm={setEditForm}
+              submitting={submitting}
+              onCancel={() => {setEditingUser(null); setEditForm(null);}}
+              onSubmit={saveUserEdit}
+            />
+          ) : null}
 
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>⌕</Text>
-
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search users by name, phone or group"
-            placeholderTextColor="#A1A1A6"
-          />
-
-          {search.length > 0 && (
+          {/* ================= PROMINENT ADD BOSS BANNER BUTTON ================= */}
+          <View style={styles.addBossBannerRow}>
             <TouchableOpacity
-              style={styles.clearButton}
-              activeOpacity={0.8}
-              onPress={() => setSearch('')}>
-              <Text style={styles.clearButtonText}>
-                ×
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Filter */}
-        <View style={styles.filterHeader}>
-          <Text style={styles.filterTitle}>
-            FILTER USERS
-          </Text>
-
-          <Text style={styles.resultCount}>
-            {filteredUsers.length} results
-          </Text>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}>
-          {filters.map(filter => {
-            const isActive = activeFilter === filter;
-
-            return (
-              <TouchableOpacity
-                key={filter}
-                style={[
-                  styles.filterButton,
-                  isActive && styles.filterButtonActive,
-                ]}
-                activeOpacity={0.8}
-                onPress={() => setActiveFilter(filter)}>
-                <Text
-                  style={[
-                    styles.filterButtonText,
-                    isActive && styles.filterButtonTextActive,
-                  ]}>
-                  {filter}
+              style={styles.addBossButton}
+              activeOpacity={0.85}
+              onPress={() => setShowAddBossModal(true)}>
+              <View style={styles.addBossIconBox}>
+                <Text style={styles.addBossPlus}>+</Text>
+              </View>
+              <View style={styles.addBossTextContent}>
+                <View style={styles.addBossTitleRow}>
+                  <Text style={styles.addBossTitle}>Add Boss</Text>
+                  <View style={styles.addBossTag}>
+                    <Text style={styles.addBossTagText}>MULTI-GROUP</Text>
+                  </View>
+                </View>
+                <Text style={styles.addBossSubtitle}>
+                  Create or assign group-scoped Boss permissions
                 </Text>
+              </View>
+              <Text style={styles.addBossArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-                <View
+        {/* ================= SECTION 1: SEARCH ================= */}
+        <View style={styles.searchSection}>
+          <View style={styles.searchContainer}>
+            <Text style={styles.searchIcon}>⌕</Text>
+
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search users by name, phone or group"
+              placeholderTextColor="#A1A1A6"
+            />
+
+            {search.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                activeOpacity={0.8}
+                onPress={() => setSearch('')}>
+                <Text style={styles.clearButtonText}>
+                  ×
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* ================= SECTION 2 (STICKY): FILTER HEADER, TABS & STATS ================= */}
+        <View style={styles.stickyFilterContainer}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterTitle}>
+              FILTER USERS
+            </Text>
+
+            <Text style={styles.resultCount}>
+              {filteredUsers.length} results
+            </Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}>
+            {filters.map(filter => {
+              const isActive = activeFilter === filter;
+
+              return (
+                <TouchableOpacity
+                  key={filter}
                   style={[
-                    styles.filterCount,
-                    isActive && styles.filterCountActive,
-                  ]}>
+                    styles.filterButton,
+                    isActive && styles.filterButtonActive,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() => setActiveFilter(filter)}>
                   <Text
                     style={[
-                      styles.filterCountText,
-                      isActive && styles.filterCountTextActive,
+                      styles.filterButtonText,
+                      isActive && styles.filterButtonTextActive,
                     ]}>
-                    {getFilterCount(filter)}
+                    {filter}
                   </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
 
-        {/* Summary Stats */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <View style={[styles.summaryDot, styles.summaryBossDot]} />
-            <Text style={styles.summaryText}>Bosses</Text>
-            <Text style={styles.summaryNumber}>{getFilterCount('Bosses')}</Text>
-          </View>
+                  <View
+                    style={[
+                      styles.filterCount,
+                      isActive && styles.filterCountActive,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.filterCountText,
+                        isActive && styles.filterCountTextActive,
+                      ]}>
+                      {getFilterCount(filter)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-          <View style={styles.summaryItem}>
-            <View style={[styles.summaryDot, styles.summaryActiveDot]} />
-            <Text style={styles.summaryText}>Active</Text>
-            <Text style={styles.summaryNumber}>{getFilterCount('Active')}</Text>
-          </View>
+          {/* Summary Stats */}
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <View style={[styles.summaryDot, styles.summaryBossDot]} />
+              <Text style={styles.summaryText}>Bosses</Text>
+              <Text style={styles.summaryNumber}>{getFilterCount('Bosses')}</Text>
+            </View>
 
-          <View style={styles.summaryItem}>
-            <View style={[styles.summaryDot, styles.summaryInactiveDot]} />
-            <Text style={styles.summaryText}>Inactive</Text>
-            <Text style={styles.summaryNumber}>{getFilterCount('Inactive')}</Text>
+            <View style={styles.summaryItem}>
+              <View style={[styles.summaryDot, styles.summaryActiveDot]} />
+              <Text style={styles.summaryText}>Active</Text>
+              <Text style={styles.summaryNumber}>{getFilterCount('Active')}</Text>
+            </View>
+
+            <View style={styles.summaryItem}>
+              <View style={[styles.summaryDot, styles.summaryInactiveDot]} />
+              <Text style={styles.summaryText}>Inactive</Text>
+              <Text style={styles.summaryNumber}>{getFilterCount('Inactive')}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Users List */}
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.usersList}>
-
+        {/* ================= SECTION 3: USERS LIST ================= */}
+        <View style={styles.usersList}>
           {loading ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>Loading users...</Text>
@@ -575,10 +584,10 @@ const AdminUsersScreen = ({
               );
             })
           )}
+        </View>
 
-          <View style={styles.bottomSpace} />
-        </ScrollView>
-      </View>
+        <View style={styles.bottomSpace} />
+      </ScrollView>
 
       {/* Add Boss Modal */}
       <AddBossModal
@@ -796,21 +805,41 @@ const styles = StyleSheet.create({
     color: '#8A8A8E',
   },
 
+  scrollContent: {
+    paddingBottom: 20,
+  },
+
+  topBannerSection: {
+    backgroundColor: '#F7F7F8',
+  },
+
+  searchSection: {
+    backgroundColor: '#F7F7F8',
+  },
+
+  stickyFilterContainer: {
+    backgroundColor: '#F7F7F8',
+    paddingTop: 4,
+    paddingBottom: 4,
+    zIndex: 10,
+  },
+
   filterScroll: {
     paddingHorizontal: 18,
     paddingBottom: 10,
-    gap: 8,
   },
 
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E8E8EB',
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginRight: 8,
+    minHeight: 38,
   },
 
   filterButtonActive: {
@@ -819,10 +848,10 @@ const styles = StyleSheet.create({
   },
 
   filterButtonText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#4B5563',
-    marginRight: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginRight: 8,
   },
 
   filterButtonTextActive: {
@@ -830,20 +859,23 @@ const styles = StyleSheet.create({
   },
 
   filterCount: {
-    backgroundColor: '#F1F2F4',
+    backgroundColor: '#E5E7EB',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   filterCountActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
 
   filterCountText: {
     fontSize: 11,
-    fontWeight: '900',
-    color: '#6B7280',
+    fontWeight: '800',
+    color: '#1F2937',
   },
 
   filterCountTextActive: {

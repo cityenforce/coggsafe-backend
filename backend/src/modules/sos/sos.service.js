@@ -148,13 +148,15 @@ async function getSosById(id, reqUser) {
   const sos = await getSosOrThrow(id);
   const isOwnerOrAdmin = isAdmin(reqUser) || String(sos.userId) === String(reqUser.id);
   if (!isOwnerOrAdmin) {
-    const requester = await User.findById(reqUser.id).select('collectionId status role deletedAt');
+    const requester = await User.findById(reqUser.id).select('collectionId groupMemberships status role deletedAt');
     const isCollectionMember = requester
       && requester.status === USER_STATUS.ACTIVE
       && !requester.deletedAt
       && requester.role === ROLES.USER
-      && requester.collectionId
-      && String(requester.collectionId) === String(sos.collectionId);
+      && (
+        (requester.collectionId && String(requester.collectionId) === String(sos.collectionId)) ||
+        (requester.groupMemberships || []).some(m => String(m.collectionId?._id || m.collectionId) === String(sos.collectionId))
+      );
     if (!isCollectionMember) {
       throw ApiError.forbidden('You do not have permission to access this SOS');
     }
@@ -213,7 +215,8 @@ async function createSos({ userId, idempotencyKey, location, emergencyMessage })
   if (!user) {
     throw ApiError.unauthorized('User no longer exists');
   }
-  if (!user.collectionId) {
+  const primaryCollectionId = user.collectionId || (user.groupMemberships && user.groupMemberships.length > 0 ? (user.groupMemberships[0].collectionId?._id || user.groupMemberships[0].collectionId) : null);
+  if (!primaryCollectionId) {
     throw ApiError.badRequest('You are not assigned to a collection and cannot trigger an SOS');
   }
 
@@ -230,7 +233,7 @@ async function createSos({ userId, idempotencyKey, location, emergencyMessage })
   try {
     sos = await Sos.create({
       userId: user._id,
-      collectionId: user.collectionId,
+      collectionId: primaryCollectionId,
       emergencyMessage: resolveEmergencyMessage(user, emergencyMessage),
       emergencyToken: generateEmergencyToken(),
       idempotencyKey: idempotencyKey || undefined,

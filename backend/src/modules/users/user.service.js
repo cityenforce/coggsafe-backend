@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('./user.model');
 const Collection = require('../collections/collection.model');
 const ApiError = require('../../utils/ApiError');
@@ -158,31 +159,37 @@ function formatUserRecord(userDoc) {
   const doc = typeof userDoc.toObject === 'function' ? userDoc.toObject() : { ...userDoc };
   const groupMap = new Map();
 
-  if (doc.collectionId && (doc.collectionId._id || doc.collectionId.id)) {
-    const colId = doc.collectionId._id || doc.collectionId.id;
-    groupMap.set(String(colId), {
-      id: colId,
-      _id: colId,
-      name: doc.collectionId.name || 'Group',
-      type: doc.collectionId.type || 'other',
-      emergencyCallNumber: doc.collectionId.emergencyCallNumber,
-      role: 'user',
-    });
+  if (doc.collectionId) {
+    const colObj = typeof doc.collectionId === 'object' && doc.collectionId !== null ? doc.collectionId : {};
+    const colId = colObj._id || colObj.id || doc.collectionId;
+    if (colId) {
+      const idStr = String(colId._id || colId);
+      groupMap.set(idStr, {
+        id: idStr,
+        _id: idStr,
+        name: colObj.name || 'Group',
+        type: colObj.type || 'other',
+        emergencyCallNumber: colObj.emergencyCallNumber,
+        role: 'user',
+      });
+    }
   }
 
   if (Array.isArray(doc.groupMemberships)) {
     doc.groupMemberships.forEach(m => {
       if (m && m.collectionId) {
-        const colObj = typeof m.collectionId === 'object' ? m.collectionId : {};
+        const colObj = typeof m.collectionId === 'object' && m.collectionId !== null ? m.collectionId : {};
         const colId = colObj._id || colObj.id || m.collectionId;
         if (colId) {
-          groupMap.set(String(colId), {
-            id: colId,
-            _id: colId,
-            name: colObj.name || (groupMap.get(String(colId))?.name || 'Group'),
-            type: colObj.type || (groupMap.get(String(colId))?.type || 'other'),
-            emergencyCallNumber: colObj.emergencyCallNumber,
-            role: m.role || 'user',
+          const idStr = String(colId._id || colId);
+          const existing = groupMap.get(idStr);
+          groupMap.set(idStr, {
+            id: idStr,
+            _id: idStr,
+            name: colObj.name || (existing?.name || 'Group'),
+            type: colObj.type || (existing?.type || 'other'),
+            emergencyCallNumber: colObj.emergencyCallNumber || existing?.emergencyCallNumber,
+            role: m.role || existing?.role || 'user',
           });
         }
       }
@@ -216,28 +223,36 @@ async function removeUserFromCollection(collectionId, userId) {
 
 async function listUsers(query = {}) {
   const { page, limit, skip } = parsePagination(query);
-  const filter = { ...NOT_DELETED };
+  const andConditions = [{ ...NOT_DELETED }];
 
-  if (query.status) filter.status = query.status;
-  if (query.collectionId) {
-    filter.$or = [
-      { collectionId: query.collectionId },
-      { 'groupMemberships.collectionId': query.collectionId },
-    ];
+  if (query.status) andConditions.push({ status: query.status });
+  if (query.excludeUserId) andConditions.push({ _id: { $ne: query.excludeUserId } });
+  if (query.role) andConditions.push({ role: query.role });
+  if (query.groupRole) andConditions.push({ 'groupMemberships.role': query.groupRole });
+
+  const rawCollectionIds = query.collectionIds || (query.collectionId ? [query.collectionId] : null);
+  if (rawCollectionIds && rawCollectionIds.length > 0) {
+    const objectIds = rawCollectionIds.map(id => {
+      const str = String(id?._id || id);
+      return mongoose.Types.ObjectId.isValid(str) ? new mongoose.Types.ObjectId(str) : str;
+    });
+
+    andConditions.push({
+      $or: [
+        { collectionId: { $in: objectIds } },
+        { 'groupMemberships.collectionId': { $in: objectIds } },
+      ],
+    });
   }
-  if (query.excludeUserId) {
-    filter._id = { $ne: query.excludeUserId };
-  }
-  if (query.role) {
-    filter.role = query.role;
-  }
-  if (query.groupRole) {
-    filter['groupMemberships.role'] = query.groupRole;
-  }
+
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
-    filter.$or = [{ username: regex }, { mobileNumber: regex }, { email: regex }];
+    andConditions.push({
+      $or: [{ username: regex }, { mobileNumber: regex }, { email: regex }],
+    });
   }
+
+  const filter = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
 
   const [items, total] = await Promise.all([
     User.find(filter)
@@ -260,12 +275,17 @@ async function listContacts(userId) {
     throw ApiError.notFound('User not found');
   }
 
-  if (!currentUser.collectionId) {
+  const groupIds = [
+    ...(currentUser.collectionId ? [currentUser.collectionId.toString()] : []),
+    ...(currentUser.groupMemberships || []).map(m => (m.collectionId?._id || m.collectionId).toString()),
+  ];
+  const uniqueGroupIds = Array.from(new Set(groupIds));
+  if (uniqueGroupIds.length === 0) {
     return [];
   }
 
   const { items } = await listUsers({
-    collectionId: currentUser.collectionId,
+    collectionIds: uniqueGroupIds,
     excludeUserId: userId,
   });
 
@@ -274,14 +294,23 @@ async function listContacts(userId) {
 
 /**
  * Emergency SMS recipients are broader than the normal Contacts screen:
- * active admins plus every other active user in the triggering user's
- * collection. Keeping this as a dedicated endpoint prevents admin users from
+ * active admins plus every other active user in ANY of the triggering user's
+ * assigned collections. Keeping this as a dedicated endpoint prevents admin users from
  * unexpectedly appearing in the ordinary Contacts UI.
  */
 async function listEmergencySmsRecipients(userId) {
   const currentUser = await User.findOne({ _id: userId, ...NOT_DELETED });
   if (!currentUser) throw ApiError.notFound('User not found');
-  if (!currentUser.collectionId) return [];
+
+  const groupIds = [
+    ...(currentUser.collectionId ? [currentUser.collectionId.toString()] : []),
+    ...(currentUser.groupMemberships || []).map(m => (m.collectionId?._id || m.collectionId).toString()),
+  ];
+  const uniqueGroupIds = Array.from(new Set(groupIds)).map(id =>
+    mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
+  );
+
+  if (uniqueGroupIds.length === 0) return [];
 
   return User.find({
     ...NOT_DELETED,
@@ -289,9 +318,16 @@ async function listEmergencySmsRecipients(userId) {
     mobileNumber: { $exists: true, $nin: ['', null] },
     $or: [
       { role: ROLES.ADMIN },
-      { role: ROLES.USER, collectionId: currentUser.collectionId, _id: { $ne: userId } },
+      {
+        role: ROLES.USER,
+        _id: { $ne: userId },
+        $or: [
+          { collectionId: { $in: uniqueGroupIds } },
+          { 'groupMemberships.collectionId': { $in: uniqueGroupIds } },
+        ],
+      },
     ],
-  }).select('_id username mobileNumber role collectionId').sort({ role: 1, username: 1 });
+  }).select('_id username mobileNumber role collectionId groupMemberships').sort({ role: 1, username: 1 });
 }
 
 async function getUserById(id) {

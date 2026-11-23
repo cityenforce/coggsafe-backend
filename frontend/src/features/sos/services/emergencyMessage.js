@@ -49,37 +49,40 @@ export function buildGoogleMapsLink(location) {
 }
 
 /**
- * Builds the FIRST emergency SMS: the user's exact saved/custom message,
- * followed by the fresh GPS Google Maps link when a real location fix is
- * available. The user's message is never replaced or altered beyond
- * appending the location block.
- *
- * Returns { message, includesLocation } so callers can decide whether a
- * follow-up "location now available" SMS is still needed.
+ * Builds the FIRST emergency SMS: the user's exact saved/custom message
+ * from their profile.
  */
-export function buildFirstEmergencySms({user, location, baseMessage} = {}) {
+export function buildFirstEmergencySms({user, baseMessage} = {}) {
   const base = typeof baseMessage === 'string' && baseMessage.trim() ? baseMessage.trim() : getUserEmergencyMessage(user);
-  const mapsLink = buildGoogleMapsLink(location);
-  if (!mapsLink) {
-    return {message: base, includesLocation: false};
-  }
   return {
-    message: `${base}\nMy current location:\n${mapsLink}`,
-    includesLocation: true,
+    message: base,
+    includesLocation: false,
   };
 }
 
 /**
- * Builds a standalone follow-up SMS carrying only the fresh GPS location,
- * for the case where the first SMS had to go out before a location fix
- * was available. This is only ever sent when buildFirstEmergencySms could
- * not include a location.
+ * Builds the SECOND emergency SMS carrying the user's emergency message
+ * along with the GPS Google Maps location link.
  */
-export function buildLocationFollowUpSms({location, emergencyLink} = {}) {
+export function buildLocationFollowUpSms({location, baseMessage, user} = {}) {
   const mapsLink = buildGoogleMapsLink(location);
   if (!mapsLink) return null;
-  const trackingPart = emergencyLink ? `\nLive tracking: ${emergencyLink}` : '';
-  return `My current location:\n${mapsLink}${trackingPart}`;
+  const base = typeof baseMessage === 'string' && baseMessage.trim()
+    ? baseMessage.trim()
+    : (user ? getUserEmergencyMessage(user) : '');
+  if (base) {
+    return `${base}\nMy current location:\n${mapsLink}`;
+  }
+  return `My current location:\n${mapsLink}`;
+}
+
+/**
+ * Builds the THIRD emergency SMS carrying the backend live tracking link
+ * containing live location, photos, and audio.
+ */
+export function buildEmergencyLinkSms({emergencyLink} = {}) {
+  if (!emergencyLink) return null;
+  return `Emergency tracking link (live location, photos & audio):\n${emergencyLink}`;
 }
 
 export default {
@@ -88,4 +91,5 @@ export default {
   buildGoogleMapsLink,
   buildFirstEmergencySms,
   buildLocationFollowUpSms,
+  buildEmergencyLinkSms,
 };

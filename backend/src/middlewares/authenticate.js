@@ -3,6 +3,7 @@ const ApiError = require('../utils/ApiError');
 const User = require('../modules/users/user.model');
 const Collection = require('../modules/collections/collection.model');
 const { USER_STATUS } = require('../constants/sosConstants');
+const { formatUserRecord } = require('../modules/users/user.service');
 
 /**
  * Verifies the Bearer token, then loads the user fresh from the database
@@ -50,7 +51,9 @@ async function authenticate(req, res, next) {
       throw ApiError.unauthorized('Invalid or expired authentication token');
     }
 
-    const user = await User.findById(payload.sub);
+    const user = await User.findById(payload.sub)
+      .populate('collectionId', 'name type emergencyCallNumber')
+      .populate('groupMemberships.collectionId', 'name type emergencyCallNumber');
     if (!user) {
       throw ApiError.unauthorized('User no longer exists');
     }
@@ -60,19 +63,16 @@ async function authenticate(req, res, next) {
     }
 
     const collection = user.collectionId
-      ? await Collection.findById(user.collectionId).select('name type emergencyCallNumber')
+      ? (typeof user.collectionId === 'object' ? user.collectionId : await Collection.findById(user.collectionId).select('name type emergencyCallNumber'))
       : null;
 
+    const formatted = formatUserRecord(user);
+
     req.user = {
+      ...formatted,
       id: user._id.toString(),
       _id: user._id.toString(),
-      username: user.username,
-      mobileNumber: user.mobileNumber,
-      email: user.email,
-      role: user.role, // fresh from DB, authoritative
-      status: user.status,
-      collectionId: user.collectionId,
-      emergencyMessage: user.emergencyMessage,
+      collectionId: user.collectionId?._id ? user.collectionId._id.toString() : (user.collectionId ? user.collectionId.toString() : null),
       collection,
     };
 

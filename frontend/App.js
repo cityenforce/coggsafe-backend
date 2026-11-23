@@ -77,7 +77,7 @@ import {connectivityService} from './src/features/sos/connectivity';
 import {processSosQueue, enqueueSosJob} from './src/features/sos/queue/queueWorker';
 import {recoverActiveSosWork} from './src/features/sos/recovery';
 import {sosLocalStore} from './src/features/sos/storage';
-import {buildFirstEmergencySms, buildLocationFollowUpSms, getUserEmergencyMessage} from './src/features/sos/services/emergencyMessage';
+import {buildEmergencyLinkSms, buildFirstEmergencySms, buildLocationFollowUpSms, getUserEmergencyMessage} from './src/features/sos/services/emergencyMessage';
 import {flushPendingProfileUpdate} from './src/features/profile/profileSync';
 
 import {
@@ -430,18 +430,15 @@ function AppContent() {
             },
 
             linkSms: async (item, event) => {
-              // The primary emergency SMS is the authoritative direct-SIM message.
-              // Do not send a second SMS to the same recipients when that primary
-              // transmission has already completed; this was causing occasional
-              // duplicate SMS deliveries. The tracking link remains available in
-              // the SOS/notification UI.
-              if (event.services?.sms?.status === 'COMPLETED') {
-                return {status: 'COMPLETED', reason: 'Primary emergency SMS already sent; duplicate link SMS suppressed.'};
+              const latestEvent = (await sosLocalStore.getSosById(event.id)) || event;
+              if (latestEvent.services?.linkSms?.status === 'COMPLETED' || latestEvent.services?.linkSms?.status === 'SENT') {
+                return {status: 'COMPLETED', reason: 'Emergency tracking link SMS already sent.'};
               }
-              if (!event.emergencyLink) {
+              const emergencyLink = latestEvent.emergencyLink || event.emergencyLink;
+              if (!emergencyLink) {
                 return {status: 'WAITING_FOR_LINK', reason: 'Waiting for the backend emergency link.'};
               }
-              let recipients = event.meta?.smsRecipients || [];
+              let recipients = latestEvent.meta?.smsRecipients || event.meta?.smsRecipients || [];
               if (!recipients.length) {
                 const cachedMembers = await sosLocalStore.getCachedCollectionMembers(user?.collectionId);
                 recipients = cachedMembers.map(member => member?.mobileNumber).filter(Boolean);
@@ -449,9 +446,10 @@ function AppContent() {
               if (!recipients.length) {
                 return {status: 'PENDING', reason: 'Waiting for collection SMS recipients.'};
               }
+              const linkMessage = buildEmergencyLinkSms({emergencyLink}) || `Emergency tracking link:\n${emergencyLink}`;
               return sendEmergencySmsToNumbers({
                 phoneNumbers: recipients,
-                message: `Emergency tracking link: ${event.emergencyLink}`,
+                message: linkMessage,
                 sosId: event.id,
                 serviceKey: 'linkSms',
               });
@@ -474,7 +472,11 @@ function AppContent() {
               if (!recipients.length) {
                 return {status: 'PENDING', reason: 'Waiting for collection SMS recipients.'};
               }
-              const message = buildLocationFollowUpSms({location: current.location, emergencyLink: current.emergencyLink});
+              const message = buildLocationFollowUpSms({
+                location: current.location,
+                baseMessage: current.meta?.emergencyMessage,
+                user,
+              });
               if (!message) {
                 return {status: 'WAITING_FOR_LINK', reason: 'Waiting for the first valid GPS location.'};
               }
@@ -1021,7 +1023,11 @@ function AppContent() {
             if (!recipients.length) {
               return {status: 'PENDING', reason: 'Waiting for collection SMS recipients.'};
             }
-            const message = buildLocationFollowUpSms({location: current.location, emergencyLink: current.emergencyLink});
+            const message = buildLocationFollowUpSms({
+              location: current.location,
+              baseMessage: current.meta?.emergencyMessage,
+              user: sosUser,
+            });
             if (!message) {
               return {status: 'PENDING', reason: 'Waiting for a valid GPS location.'};
             }
@@ -1034,29 +1040,27 @@ function AppContent() {
           },
 
           // ------------------------------------------------------
-          // EMERGENCY TRACKING LINK SMS
+          // EMERGENCY TRACKING LINK SMS (SMS 3)
           // ------------------------------------------------------
           linkSms: async event => {
-            // The primary emergency SMS is the only SMS that may be sent to
-            // collection members. The queue also creates a LINK_SMS job for
-            // recovery, but that job must never create a second emergency
-            // message after the primary SMS succeeded.
             const latestEvent = (await sosLocalStore.getSosById(event.id)) || event;
-            if (latestEvent.services?.sms?.status === 'COMPLETED') {
-              return {status: 'COMPLETED', reason: 'Primary emergency SMS already sent; duplicate link SMS suppressed.'};
+            if (latestEvent.services?.linkSms?.status === 'COMPLETED' || latestEvent.services?.linkSms?.status === 'SENT') {
+              return {status: 'COMPLETED', reason: 'Emergency tracking link SMS already sent.'};
             }
-            if (!event.emergencyLink) {
+            const emergencyLink = latestEvent.emergencyLink || event.emergencyLink;
+            if (!emergencyLink) {
               return {status: 'PENDING', reason: 'Waiting for the backend emergency link.'};
             }
             const recipients = (await collectionSmsRecipientsPromise).length
               ? await collectionSmsRecipientsPromise
-              : (event.meta?.smsRecipients || []);
+              : (latestEvent.meta?.smsRecipients || event.meta?.smsRecipients || []);
             if (!recipients.length) {
               return {status: 'PENDING', reason: 'Waiting for collection SMS recipients.'};
             }
+            const linkMessage = buildEmergencyLinkSms({emergencyLink}) || `Emergency tracking link:\n${emergencyLink}`;
             return sendEmergencySmsToNumbers({
               phoneNumbers: recipients,
-              message: `Emergency tracking link: ${event.emergencyLink}`,
+              message: linkMessage,
               sosId: event.id,
               serviceKey: 'linkSms',
             });

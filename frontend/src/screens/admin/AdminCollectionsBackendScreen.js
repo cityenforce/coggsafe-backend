@@ -43,7 +43,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
   const [credentialMap, setCredentialMap] = useState(initialCredentials);
 
   const loadCollections = useCallback(async ({initial = false, forceRefresh = false} = {}) => {
-    if (!collections.length && !collectionSnapshots.has(token)) {
+    if (!collectionSnapshots.has(token)) {
       setLoading(true);
     }
     try {
@@ -53,11 +53,11 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
       collectionSnapshots.set(token, nextCollections);
       setError('');
     } catch (requestError) {
-      if (!collectionSnapshots.has(token) || collections.length === 0) setError(requestError.message || 'Unable to load groups. Please try again.');
+      if (!collectionSnapshots.has(token)) setError(requestError.message || 'Unable to load groups. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [collections.length, token]);
+  }, [token]);
 
   useEffect(() => {
     loadCollections({initial: !collectionSnapshots.has(token), forceRefresh: true});
@@ -75,25 +75,12 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
     const memberKey = `${token}:${colId}`;
     const cachedEntry = memberSnapshots.get(memberKey);
     const cachedMembers = cachedEntry?.items || null;
-    const cacheFresh = cachedEntry && Date.now() - cachedEntry.fetchedAt < 60000;
     if (cachedMembers && Array.isArray(cachedMembers)) {
       setMembers(cachedMembers);
       setMembersLoading(false);
     } else {
       setMembers([]);
       setMembersLoading(true);
-    }
-
-    if (cacheFresh && cachedMembers && Array.isArray(cachedMembers)) {
-      listCollectionUsers(token, colId, {limit: 100}, {forceRefresh: true})
-        .then(response => {
-          const nextMembers = response?.users || response?.data?.users || [];
-          memberSnapshots.set(memberKey, {items: nextMembers, fetchedAt: Date.now()});
-          setMembers(nextMembers);
-          setMemberError('');
-        })
-        .catch(() => undefined);
-      return;
     }
 
     try {
@@ -308,6 +295,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
         {memberError && members.length === 0 ? <View style={styles.empty}><Text style={styles.error}>{memberError}</Text><TouchableOpacity onPress={() => openCollection(selected)}><Text style={styles.retry}>Retry</Text></TouchableOpacity></View> : membersLoading ? <ActivityIndicator color="#E4002B" /> : members.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>No users in this group</Text><Text style={styles.muted}>Add a user to this group.</Text></View> : members.map(member => {
           const memberId = member._id || member.id;
           const statusLabel = member.status === 'active' ? 'Active' : 'Inactive';
+          const isMemberBoss = member.isBoss || member.displayRole === 'Boss' || (member.assignedGroups || []).some(g => String(g.id || g._id) === String(selected?._id || selected?.id) && g.role === 'boss');
           return (
             <View key={memberId} style={styles.memberCard}>
               <TouchableOpacity
@@ -316,7 +304,14 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
               >
                 <View style={styles.avatar}><Text style={styles.avatarText}>{getUserInitials(member.username)}</Text></View>
                 <View style={styles.memberInfo}>
-                  <Text style={styles.memberName}>{member.username}</Text>
+                  <View style={styles.memberNameRow}>
+                    <Text style={styles.memberName}>{member.username}</Text>
+                    {isMemberBoss ? (
+                      <View style={styles.bossBadge}>
+                        <Text style={styles.bossBadgeText}>Boss</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={styles.memberMeta}>{member.mobileNumber || 'No mobile number'}</Text>
                   <Text style={styles.memberMeta}>{member.email || 'No email configured'}</Text>
                 </View>
@@ -420,7 +415,10 @@ const styles = StyleSheet.create({
   avatar: {width: 42, height: 42, borderRadius: 21, backgroundColor: '#E4002B', alignItems: 'center', justifyContent: 'center', marginRight: 12}, 
   avatarText: {color: '#FFF', fontWeight: '900'}, 
   memberInfo: {flex: 1, minWidth: 0}, 
-  memberName: {fontWeight: '900', color: '#1A1A1A', marginBottom: 3}, 
+  memberNameRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 3, flexWrap: 'wrap'},
+  memberName: {fontWeight: '900', color: '#1A1A1A', marginRight: 6}, 
+  bossBadge: {backgroundColor: '#FEF3C7', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, borderWidth: 1, borderColor: '#FDE68A'},
+  bossBadgeText: {color: '#92400E', fontSize: 10, fontWeight: '800'},
   memberMeta: {fontSize: 12, color: '#6B7280', marginBottom: 2}, 
   memberStatusPill: {paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, marginLeft: 10}, 
   memberStatusActive: {backgroundColor: '#E8F7EE'}, 

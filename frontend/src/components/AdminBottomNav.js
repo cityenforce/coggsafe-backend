@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import Icon from './Icon';
 
 const AdminBottomNav = ({
   activeTab = 'Dashboard',
@@ -15,22 +16,22 @@ const AdminBottomNav = ({
     {
       key: 'Dashboard',
       label: 'Dashboard',
-      icon: '⌂',
+      iconName: 'dashboard',
     },
     {
       key: 'Users',
       label: 'Users',
-      icon: '👥',
+      iconName: 'collection',
     },
     {
       key: 'Groups',
       label: 'Groups',
-      icon: '◫',
+      iconName: 'workers',
     },
     {
       key: 'SOS',
       label: 'SOS',
-      icon: '!',
+      iconName: 'sos',
     },
   ];
 
@@ -61,21 +62,17 @@ const AdminBottomNav = ({
                     isActive &&
                     styles.activeSosIconContainer,
                 ]}>
-                <Text
-                  style={[
-                    styles.icon,
-                    tab.key === 'SOS' &&
-                      !isActive &&
-                      styles.sosIcon,
-                    tab.key === 'SOS' &&
-                      isActive &&
-                      styles.activeSosIcon,
-                    tab.key !== 'SOS' &&
-                      isActive &&
-                      styles.activeIcon,
-                  ]}>
-                  {tab.icon}
-                </Text>
+                <Icon
+                  name={tab.iconName}
+                  size={24}
+                  color={
+                    tab.key === 'SOS' && isActive
+                      ? '#FFFFFF'
+                      : isActive
+                      ? '#E4002B'
+                      : '#A1A1A6'
+                  }
+                />
               </View>
 
               <Text

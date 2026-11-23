@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import {listCollections, createOrAssignBoss} from '../api/resources';
 import Icon from './Icon';
+import {clearCollectionSnapshots} from '../screens/admin/AdminCollectionsBackendScreen';
 
 export default function AddBossModal({
   visible,
@@ -144,6 +145,10 @@ export default function AddBossModal({
       const isExisting = response?.isExistingUser || response?.data?.isExistingUser;
       const user = response?.user || response?.data?.user;
 
+      try {
+        clearCollectionSnapshots();
+      } catch (_) {}
+
       Alert.alert(
         'Success',
         isExisting
@@ -238,25 +243,27 @@ export default function AddBossModal({
 
             {/* Password */}
             <View style={styles.formGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>
-                  PASSWORD {detectedExistingUser ? '(OPTIONAL FOR EXISTING)' : <Text style={styles.required}>*</Text>}
-                </Text>
-                <TouchableOpacity onPress={() => setShowPassword(prev => !prev)}>
-                  <Text style={styles.togglePasswordText}>
-                    {showPassword ? 'Hide' : 'Show'}
-                  </Text>
+              <Text style={styles.label}>
+                PASSWORD {detectedExistingUser ? '(OPTIONAL FOR EXISTING)' : <Text style={styles.required}>*</Text>}
+              </Text>
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={detectedExistingUser ? 'Leave blank to keep existing password' : 'Min 8 characters'}
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword(prev => !prev)}
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  activeOpacity={0.7}>
+                  <Icon name={showPassword ? 'eyeOff' : 'eye'} size={20} color="#6B7280" />
                 </TouchableOpacity>
               </View>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder={detectedExistingUser ? 'Leave blank to keep existing password' : 'Min 8 characters'}
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
             </View>
 
             {/* Email */}
@@ -522,6 +529,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 14,
     color: '#1A1A1A',
+  },
+  passwordInputContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   helperText: {
     fontSize: 11,

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Icon from '../components/Icon';
 import {updateMyProfile} from '../api/resources';
+import {getCurrentUser} from '../api/auth';
 import {getUserEmergencyMessage} from '../features/sos/services/emergencyMessage';
 import {savePendingProfileUpdate, clearPendingProfileUpdate} from '../features/profile/profileSync';
 import {sosLocalStore} from '../features/sos/storage';
@@ -64,6 +65,16 @@ const UserProfileScreen = ({
     sosLocalStore.getDailyAlarmEnabled(uid).then(enabled => {
       if (mounted) setDailyAlarmEnabled(enabled);
     });
+
+    if (token) {
+      getCurrentUser(token)
+        .then(res => {
+          if (mounted && res?.user && onUserUpdated) {
+            onUserUpdated({...user, ...res.user, collection: res.collection || res.user?.collection || user?.collection});
+          }
+        })
+        .catch(() => {});
+    }
 
     const refreshDiagnosticView = async () => {
       let isAirplane = false;
@@ -233,7 +244,7 @@ const UserProfileScreen = ({
         <View style={styles.profileInfo}>
           <Text style={styles.profileName}>{user?.username || 'User'}</Text>
           <View style={styles.profileStatusRow}>
-            <Text style={styles.profileRole}>User:</Text>
+            <Text style={styles.profileRole}>Role:</Text>
             <Text
               style={[
                 styles.profileStatus,
@@ -243,13 +254,29 @@ const UserProfileScreen = ({
                     : '#B42318',
                 },
               ]}>
-              {String(user?.status || '').toLowerCase() === 'active' ? 'Active' : 'Deactive'}
+              {(user?.displayRole || (user?.isBoss ? 'Boss' : (user?.role === 'admin' ? 'Admin' : 'User')))} • {String(user?.status || '').toLowerCase() === 'active' ? 'Active' : 'Deactive'}
             </Text>
           </View>
           <Text style={styles.profileEmail} numberOfLines={2}>
             {user?.email || 'Email not configured'}  {user?.mobileNumber || 'Mobile not configured'}
           </Text>
-          <Text style={styles.profileEmail}>{user?.collection?.name || 'Group not assigned'}</Text>
+          {(() => {
+            const groupList = Array.isArray(user?.assignedGroups) && user.assignedGroups.length > 0
+              ? user.assignedGroups.map(g => g.name ? `${g.name}${g.role === 'boss' ? ' (Boss)' : ''}` : null).filter(Boolean)
+              : Array.isArray(user?.groupMemberships) && user.groupMemberships.length > 0
+              ? user.groupMemberships.map(m => m.collectionId?.name ? `${m.collectionId.name}${m.role === 'boss' ? ' (Boss)' : ''}` : null).filter(Boolean)
+              : user?.collection?.name
+              ? [user.collection.name]
+              : [];
+
+            const groupsLabel = groupList.length > 0 ? groupList.join(' • ') : 'Group not assigned';
+
+            return (
+              <Text style={styles.profileEmail} numberOfLines={3}>
+                {groupsLabel}
+              </Text>
+            );
+          })()}
         </View>
       </View>
 

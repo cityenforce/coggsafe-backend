@@ -3,6 +3,7 @@ const Collection = require('../collections/collection.model');
 const ApiError = require('../../utils/ApiError');
 const { generateToken } = require('../../utils/jwt');
 const { USER_STATUS } = require('../../constants/sosConstants');
+const { formatUserRecord } = require('../users/user.service');
 
 /**
  * Authenticates a user by username OR email + password.
@@ -50,11 +51,20 @@ async function login(identifier, plainPassword, selectedRole) {
     role: user.role, // sourced from the DB record, never from the request
   });
 
+  const populatedUser = await User.findById(user._id)
+    .populate('collectionId', 'name type emergencyCallNumber')
+    .populate('groupMemberships.collectionId', 'name type emergencyCallNumber');
+
+  const userObj = formatUserRecord(populatedUser);
+  if (userObj && userObj.collectionId && typeof userObj.collectionId === 'object') {
+    userObj.collectionId = userObj.collectionId._id ? userObj.collectionId._id.toString() : userObj.collectionId.toString();
+  }
+
   const collection = user.collectionId
-    ? await Collection.findById(user.collectionId).select('name type emergencyCallNumber')
+    ? (typeof user.collectionId === 'object' ? user.collectionId : await Collection.findById(user.collectionId).select('name type emergencyCallNumber'))
     : null;
 
-  return { token, user, collection };
+  return { token, user: userObj, collection };
 }
 
 module.exports = { login };
