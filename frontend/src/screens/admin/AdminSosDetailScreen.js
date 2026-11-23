@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import {deactivateSos, getLiveLocation, getSos, stopLiveLocation} from '../../api/resources';
+import {deactivateSos, resolveSos, getLiveLocation, getSos, stopLiveLocation} from '../../api/resources';
 import {API_BASE_URL} from '../../api/config';
 import {buildMediaUrl} from '../../utils/media';
 import SosMediaSection from '../../components/SosMediaSection';
@@ -54,7 +54,7 @@ const AdminSosDetailScreen = ({
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backIcon}>‹</Text>
+            <Icon name="back" size={22} color="#1A1A1A" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>SOS Details</Text>
         </View>
@@ -69,6 +69,8 @@ const AdminSosDetailScreen = ({
   }
 
   const isActive = record.status === 'Active' || record.status === 'active';
+  const isDeactivated = (record.status || '').toLowerCase() === 'deactivated';
+  const isResolved = (record.status || '').toLowerCase() === 'resolved';
 
   // ================= Auth Headers =================
   const authHeaders = { Authorization: `Bearer ${token}` };
@@ -170,6 +172,37 @@ const AdminSosDetailScreen = ({
     };
   }, [recordId, token]);
 
+  const handleDeactivate = () => {
+    if (actionInFlightRef.current) return;
+    Alert.alert('Deactivate SOS', 'Are you sure you want to deactivate this emergency alert?', [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Deactivate',
+        style: 'destructive',
+        onPress: async () => {
+          if (actionInFlightRef.current) return;
+          actionInFlightRef.current = true;
+          setActionLoading(true);
+          setActionError('');
+          const actionRequestId = ++detailRequestRef.current;
+          try {
+            const response = await deactivateSos(token, record.id || record._id);
+            if (actionRequestId === detailRequestRef.current && response?.sos) {
+              setDetailRecord(response.sos);
+              setLiveLocationStatus(response.sos.liveLocation?.status || null);
+            }
+            onUpdated?.(response.sos);
+          } catch (error) {
+            setActionError(error.message || 'Unable to deactivate this SOS.');
+          } finally {
+            actionInFlightRef.current = false;
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleMarkResolved = () => {
     if (actionInFlightRef.current) return;
     Alert.alert('Mark as Resolved', 'Are you sure this emergency has been resolved?', [
@@ -183,7 +216,7 @@ const AdminSosDetailScreen = ({
           setActionError('');
           const actionRequestId = ++detailRequestRef.current;
           try {
-            const response = await deactivateSos(token, record.id || record._id);
+            const response = await resolveSos(token, record.id || record._id);
             if (actionRequestId === detailRequestRef.current && response?.sos) {
               setDetailRecord(response.sos);
               setLiveLocationStatus(response.sos.liveLocation?.status || null);
@@ -233,7 +266,7 @@ const AdminSosDetailScreen = ({
       {/* ================= HEADER ================= */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={onBack}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <View style={styles.headerTopRow}>
@@ -252,8 +285,8 @@ const AdminSosDetailScreen = ({
             </View>
           </View>
         </View>
-        <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusResolved]}>
-          <Text style={[styles.statusBadgeText, isActive ? styles.statusActiveText : styles.statusResolvedText]}>
+        <View style={[styles.statusBadge, isActive ? styles.statusActive : isDeactivated ? styles.statusDeactivated : styles.statusResolved]}>
+          <Text style={[styles.statusBadgeText, isActive ? styles.statusActiveText : isDeactivated ? styles.statusDeactivatedText : styles.statusResolvedText]}>
             {record.status || 'Unknown'}
           </Text>
         </View>
@@ -319,10 +352,24 @@ const AdminSosDetailScreen = ({
           </TouchableOpacity>
         )}
 
-        {isActive && !actionLoading ? (
-          <TouchableOpacity style={styles.resolveButton} onPress={handleMarkResolved}>
-            <Text style={styles.resolveButtonText}>✓ Mark Resolved</Text>
-          </TouchableOpacity>
+        {isActive ? (
+          <>
+            <TouchableOpacity style={styles.deactivateButton} onPress={handleDeactivate} disabled={actionLoading}>
+              <Text style={styles.deactivateButtonText}>Deactivate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.resolveButton} onPress={handleMarkResolved} disabled={actionLoading}>
+              <Text style={styles.resolveButtonText}>✓ Mark Resolved</Text>
+            </TouchableOpacity>
+          </>
+        ) : isDeactivated ? (
+          <>
+            <View style={styles.deactivatedBadge}>
+              <Text style={styles.deactivatedBadgeText}>Deactivated</Text>
+            </View>
+            <TouchableOpacity style={styles.resolveButton} onPress={handleMarkResolved} disabled={actionLoading}>
+              <Text style={styles.resolveButtonText}>✓ Mark Resolved</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity style={styles.resolvedButton} onPress={onBack}>
             <Text style={styles.resolvedButtonText}>✓ Resolved</Text>
@@ -364,12 +411,9 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F5F6F8',
-    alignItems: 'center',
+    padding: 4,
     justifyContent: 'center',
+    alignItems: 'center',
   },
 
   backIcon: {
@@ -400,9 +444,11 @@ const styles = StyleSheet.create({
 
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, alignSelf: 'flex-start' },
   statusActive: { backgroundColor: '#FDE7EA' },
+  statusDeactivated: { backgroundColor: '#F3F4F6' },
   statusResolved: { backgroundColor: '#E8F8EF' },
   statusBadgeText: { fontSize: 9, fontWeight: '900' },
   statusActiveText: { color: '#E4002B' },
+  statusDeactivatedText: { color: '#4B5563' },
   statusResolvedText: { color: '#178A4B' },
 
   scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
@@ -539,6 +585,32 @@ const styles = StyleSheet.create({
   },
 
   stopSharingActionText: { fontSize: 13, fontWeight: '700', color: '#D9263A' },
+
+  deactivateButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 28,
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1.5,
+    borderColor: '#FECDD3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  deactivateButtonText: { fontSize: 13, fontWeight: '700', color: '#E11D48' },
+
+  deactivatedBadge: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 28,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  deactivatedBadgeText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
 
   resolveButton: {
     flex: 1,

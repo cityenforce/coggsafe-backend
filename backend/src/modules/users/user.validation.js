@@ -91,6 +91,7 @@ const updateMyProfileValidation = [
   body('mobileNumber').optional().trim().matches(PHONE_REGEX),
   body('email').optional({nullable: true}).custom(value => value === null || value === '' || EMAIL_REGEX.test(value)),
   body('emergencyMessage').optional({nullable: true}).isString().trim().isLength({max: 500}),
+  body('activeCollectionId').optional().isMongoId(),
   body('role').not().exists(),
   body('status').not().exists(),
   body('password').not().exists(),

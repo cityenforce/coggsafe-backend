@@ -15,7 +15,7 @@ export default function Header({title, subtitle, onBack, navigation, right, back
       <StatusBar barStyle="dark-content" backgroundColor={backgroundColor} translucent={false} />
       <View style={[styles.header, {paddingTop: insets.top + spacing.sm, backgroundColor}]}>
         <TouchableOpacity onPress={handleBack} disabled={!onBack && !navigation} style={styles.action} accessibilityLabel="Go back">
-          <Image source={require('../public/logo.png')} style={{width: 24, height: 24}} />
+          <Icon name="back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.center}>
           <Text numberOfLines={1} style={styles.title}>{title}</Text>

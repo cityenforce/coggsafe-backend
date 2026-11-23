@@ -8,6 +8,7 @@ const SOS_STATUS = Object.freeze({
   ACTIVE: 'active', // processing / ongoing emergency
   CANCELLED: 'cancelled', // cancelled by user during cancellation window
   DEACTIVATED: 'deactivated', // deactivated by admin, history preserved
+  RESOLVED: 'resolved', // resolved, emergency concluded
 });
 
 /**

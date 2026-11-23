@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator, Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
-import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
+import {ActivityIndicator, Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView} from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {createUser, deleteCollection, deleteUser, getUserCredentials, listCollectionUsers, listCollections, setUserPassword, updateCollection, updateUser} from '../../api/resources';
 import {rememberCredential} from '../../utils/adminCredentials';
 import Icon from '../../components/Icon';
@@ -43,10 +43,12 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
   const [credentialMap, setCredentialMap] = useState(initialCredentials);
 
   const loadCollections = useCallback(async ({initial = false, forceRefresh = false} = {}) => {
-    setLoading(true);
+    if (!collections.length && !collectionSnapshots.has(token)) {
+      setLoading(true);
+    }
     try {
       const response = await listCollections(token, undefined, {forceRefresh});
-      const nextCollections = response.collections || [];
+      const nextCollections = response?.collections || response?.data?.collections || [];
       setCollections(nextCollections);
       collectionSnapshots.set(token, nextCollections);
       setError('');
@@ -55,7 +57,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [collections.length, token]);
 
   useEffect(() => {
     loadCollections({initial: !collectionSnapshots.has(token), forceRefresh: true});
@@ -64,18 +66,28 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
   }, [loadCollections, token]);
 
   const openCollection = async collection => {
+    if (!collection) return;
+    const colId = collection._id || collection.id;
     setSelected(collection);
     setEditForm({...collection});
-    const memberKey = `${token}:${collection._id}`;
+    setMemberError('');
+    setShowUserForm(false);
+    const memberKey = `${token}:${colId}`;
     const cachedEntry = memberSnapshots.get(memberKey);
     const cachedMembers = cachedEntry?.items || null;
     const cacheFresh = cachedEntry && Date.now() - cachedEntry.fetchedAt < 60000;
-    if (cachedMembers) setMembers(cachedMembers);
-    setMembersLoading(!cachedMembers);
-    if (cacheFresh && cachedMembers) {
-      listCollectionUsers(token, collection._id, {limit: 100}, {forceRefresh: true})
+    if (cachedMembers && Array.isArray(cachedMembers)) {
+      setMembers(cachedMembers);
+      setMembersLoading(false);
+    } else {
+      setMembers([]);
+      setMembersLoading(true);
+    }
+
+    if (cacheFresh && cachedMembers && Array.isArray(cachedMembers)) {
+      listCollectionUsers(token, colId, {limit: 100}, {forceRefresh: true})
         .then(response => {
-          const nextMembers = response.users || [];
+          const nextMembers = response?.users || response?.data?.users || [];
           memberSnapshots.set(memberKey, {items: nextMembers, fetchedAt: Date.now()});
           setMembers(nextMembers);
           setMemberError('');
@@ -83,10 +95,10 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
         .catch(() => undefined);
       return;
     }
-    setMemberError('');
+
     try {
-      const response = await listCollectionUsers(token, collection._id, {limit: 100});
-      const nextMembers = response.users || [];
+      const response = await listCollectionUsers(token, colId, {limit: 100}, {forceRefresh: true});
+      const nextMembers = response?.users || response?.data?.users || [];
       memberSnapshots.set(memberKey, {items: nextMembers, fetchedAt: Date.now()});
       setMembers(nextMembers);
       setMemberError('');
@@ -99,18 +111,19 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
   };
 
   useEffect(() => {
-    if (!selected || !token) return undefined;
+    const colId = selected?._id || selected?.id;
+    if (!colId || !token) return undefined;
     const refreshMembers = async () => {
       try {
-        const response = await listCollectionUsers(token, selected._id, {limit: 100}, {forceRefresh: true});
-        const nextMembers = response.users || [];
-        memberSnapshots.set(`${token}:${selected._id}`, {items: nextMembers, fetchedAt: Date.now()});
+        const response = await listCollectionUsers(token, colId, {limit: 100}, {forceRefresh: true});
+        const nextMembers = response?.users || response?.data?.users || [];
+        memberSnapshots.set(`${token}:${colId}`, {items: nextMembers, fetchedAt: Date.now()});
         setMembers(nextMembers);
       } catch (_) {}
     };
     const timer = setInterval(refreshMembers, 10000);
     return () => clearInterval(timer);
-  }, [selected?._id, token]);
+  }, [selected?._id, selected?.id, token]);
 
   // ✅ REMOVED: saveCollection function - Edit collection hidden
 
@@ -266,17 +279,25 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
 
   const header = (title, subtitle, backAction, actionLabel, action) => (
     <View style={[styles.header, {paddingTop: insets.top + 10}]}>
-      <TouchableOpacity onPress={backAction} style={styles.backButton} accessibilityLabel="Go back"><Text style={styles.backIcon}>‹</Text></TouchableOpacity>
+      <TouchableOpacity onPress={backAction} style={styles.backButton} accessibilityLabel="Go back">
+        <Icon name="back" size={22} color="#1A1A1A" />
+      </TouchableOpacity>
       <View style={styles.headerCenter}><Text style={styles.headerTitle} numberOfLines={1}>{title}</Text><Text style={styles.headerSubtitle}>{subtitle}</Text></View>
       <TouchableOpacity onPress={action} style={styles.headerAction} accessibilityRole="button"><Text style={styles.headerActionText}>{actionLabel}</Text></TouchableOpacity>
     </View>
   );
 
+  const handleBackFromDetail = () => {
+    setSelected(null);
+    setMemberError('');
+    setShowUserForm(false);
+  };
+
   if (selected) return <SafeAreaView style={styles.container}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F7F8" />
-    {header(capitalizeFirstWord(selected.name), `${capitalizeFirstWord(selected.type)} GROUP`, () => setSelected(null), showUserForm ? 'Close' : '+ User', () => setShowUserForm(value => !value))}
+    {header(capitalizeFirstWord(selected.name), `${capitalizeFirstWord(selected.type)} GROUP`, handleBackFromDetail, showUserForm ? 'Close' : '+ User', () => setShowUserForm(value => !value))}
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.flex} contentContainerStyle={[styles.content, {flexGrow: 1}]} keyboardShouldPersistTaps="handled">
         <View style={styles.summary}><Text style={styles.label}>PRIMARY EMERGENCY NUMBER</Text><Text style={styles.phone}>{selected.emergencyCallNumber}</Text><Text style={styles.muted}>{members.length} users assigned</Text></View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         
@@ -324,7 +345,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
   return <SafeAreaView style={styles.container}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F7F8" />
     {header('Groups', `${collections.length} GROUPS`, onBack, '+ Add', onAddCollection)}
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView style={styles.flex} contentContainerStyle={[styles.content, {flexGrow: 1}]}>
       {loading ? <ActivityIndicator color="#E4002B" /> : error ? <View style={styles.empty}><Text style={styles.error}>{error}</Text><TouchableOpacity onPress={loadCollections}><Text style={styles.retry}>Retry</Text></TouchableOpacity></View> : collections.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>No groups yet</Text><Text style={styles.muted}>Create your first group to start managing users.</Text></View> : collections.map(collection => (
         <View key={collection._id} style={styles.collection}>
           <TouchableOpacity style={styles.collectionMain} onPress={() => openCollection(collection)}>

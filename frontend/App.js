@@ -269,7 +269,7 @@ function AppContent() {
   useEffect(() => {
     if (!token || !user?.collectionId) return undefined;
     let cancelled = false;
-    listEmergencySmsRecipients(token)
+    listEmergencySmsRecipients(token, {activeGroupId: user?.activeCollectionId || user?.collectionId})
       .then(result => {
         if (cancelled) return;
         const members = result?.contacts || result?.users || result || [];
@@ -325,7 +325,7 @@ function AppContent() {
       // Refresh the last-known emergency SMS recipient cache in the background.
       // This request must never delay queue execution or the first SMS.
       if (user?.collectionId && connectivityService.getInternetAvailability()) {
-        listEmergencySmsRecipients(token)
+        listEmergencySmsRecipients(token, {activeGroupId: user?.activeCollectionId || user?.collectionId})
           .then(result => {
             const members = result?.contacts || result?.users || result || [];
             if (Array.isArray(members)) return sosLocalStore.setCachedCollectionMembers(user.collectionId, members);
@@ -705,7 +705,7 @@ function AppContent() {
 
   const sosActivationInFlightRef = React.useRef(false);
 
-  const handleTriggerSos = async ({silent = false} = {}) => {
+  const handleTriggerSos = async ({silent = false, activeGroupId = null, allGroups = false} = {}) => {
     if (sosActivationInFlightRef.current) return;
 
 
@@ -759,13 +759,18 @@ function AppContent() {
       // The first SOS SMS must never wait on a live network request for its
       // recipient list. Use the last-known encrypted-at-rest local cache; the
       // cache is refreshed in the background whenever internet is available.
-      const cachedMembers = await sosLocalStore.getCachedCollectionMembers(sosUser?.collectionId);
+      const selectedGroupId = activeGroupId || sosUser?.activeCollectionId || sosUser?.collectionId;
+      const cachedMembers = await sosLocalStore.getCachedCollectionMembers(selectedGroupId);
       const cachedSmsRecipients = cachedMembers.map(item => item?.mobileNumber).filter(Boolean);
-      const collectionSmsRecipientsPromise = Promise.resolve(cachedSmsRecipients);
+      const collectionSmsRecipientsPromise = allGroups
+        ? listEmergencySmsRecipients(token, {allGroups:true})
+            .then(result => (result?.contacts || result?.users || result || []).map(item => item?.mobileNumber).filter(Boolean))
+            .catch(() => cachedSmsRecipients)
+        : Promise.resolve(cachedSmsRecipients);
 
       const result = await activateSosFlow({
         userId: sosUser?._id || sosUser?.id,
-        collectionId: sosUser?.collectionId,
+        collectionId: selectedGroupId,
         cancelSignal: sosCancelSignalRef.current,
         silent,
         onPending: async event => {
@@ -798,6 +803,8 @@ function AppContent() {
               ...event.meta,
               emergencyNumber: collection?.emergencyCallNumber || null,
               emergencyMessage: getUserEmergencyMessage(sosUser),
+              activeGroupId: selectedGroupId,
+              allGroups,
               offlineSmsEnabled: await sosLocalStore.getOfflineSmsEnabled(sosUser?._id || sosUser?.id),
             },
           });
@@ -1334,6 +1341,7 @@ function AppContent() {
       }>
       <UserHistoryScreen
         token={token}
+        currentUser={user}
         onBack={() => setScreen('userHome')}
         onHistoryDetail={(item) => {
           // ================= FIX: Pass the SOS item to detail screen =================
@@ -1669,6 +1677,7 @@ function AppContent() {
             }>
             <AdminSosScreen
               token={token}
+              currentUser={user}
               onNavigate={handleAdminNavigation}
               onSosDetail={sos => {
                 setSelectedSos(sos);

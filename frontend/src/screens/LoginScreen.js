@@ -100,7 +100,7 @@ const LoginScreen = ({onLogin}) => {
               <Text style={styles.appName}>CoGG Safe</Text>
 
               <Text style={styles.tagline}>
-                Because we do care...
+                Because we do care...!
               </Text>
             </View>
 
@@ -295,36 +295,26 @@ const styles = StyleSheet.create({
   },
 
   logoWrapper: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FDE5E8',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
     overflow: 'hidden',
-
-    shadowColor: '#E4002B',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 5,
   },
 
   logo: {
-    width: 78,
-    height: 78,
+    width: 110,
+    height: 110,
   },
 
   appName: {
     fontFamily: typography.fontFamily,
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: '900',
-    color: '#E4002B',
-    letterSpacing: 0.5,
+    color: '#111827',
+    letterSpacing: -0.4,
   },
 
   tagline: {

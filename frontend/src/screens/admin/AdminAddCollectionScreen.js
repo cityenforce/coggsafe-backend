@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import {createCollection, updateCollection} from '../../api/resources';
+import Icon from '../../components/Icon';
 
 const getRequestErrorMessage = (requestError, fallback) => {
   const details = Array.isArray(requestError?.details) ? requestError.details : [];
@@ -86,8 +87,8 @@ const AdminAddCollectionScreen = ({
 
       {/* Header */}
       <View style={[styles.header, {paddingTop: insets.top + 10}]}>
-        <TouchableOpacity onPress={onBack} activeOpacity={0.7}>
-          <Text style={styles.backIcon}>‹</Text>
+        <TouchableOpacity onPress={onBack} activeOpacity={0.7} style={styles.backButton}>
+          <Icon name="back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>{editCollection ? 'Edit group' : 'Add group'}</Text>

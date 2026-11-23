@@ -6,7 +6,7 @@ const httpStatus = require('../../constants/httpStatus');
 
 const createCollection = asyncHandler(async (req, res) => {
   const { type, name, emergencyCallNumber } = req.body;
-  const collection = await collectionService.createCollection({ type, name, emergencyCallNumber });
+  const collection = await collectionService.createCollection({ type, name, emergencyCallNumber, ownerId: req.user.id });
   ApiResponse.send(res, { statusCode: httpStatus.CREATED, message: 'Collection created', data: { collection } });
 });
 
@@ -17,6 +17,12 @@ const listCollections = asyncHandler(async (req, res) => {
     message: 'Collections retrieved',
     data: { collections: items, meta },
   });
+
+});
+
+const listMyCollections = asyncHandler(async (req, res) => {
+  const collections = await collectionService.listMine(req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Your collections retrieved', data: {collections}});
 });
 
 const getCollection = asyncHandler(async (req, res) => {
@@ -51,4 +57,38 @@ const listCollectionUsers = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createCollection, listCollections, getCollection, updateCollection, deleteCollection, listCollectionUsers };
+const addCollectionMember = asyncHandler(async (req, res) => {
+  const user = await collectionService.addMember(req.params.id, req.params.userId, req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Collection member added', data: {user}});
+});
+
+const removeCollectionMember = asyncHandler(async (req, res) => {
+  await collectionService.removeMember(req.params.id, req.params.userId, req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Collection member removed', data: {}});
+});
+
+const listManagedCollectionUsers = asyncHandler(async (req, res) => {
+  const users = await collectionService.listMembers(req.params.id, req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Collection users retrieved', data: {users}});
+});
+
+const listCollectionContacts = asyncHandler(async (req, res) => {
+  const contacts = await collectionService.listEmergencyContacts(req.params.id, req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Emergency contacts retrieved', data: {contacts}});
+});
+
+const addCollectionContact = asyncHandler(async (req, res) => {
+  const contact = await collectionService.addEmergencyContact(req.params.id, req.user.id, req.body);
+  ApiResponse.send(res, {statusCode: httpStatus.CREATED, message: 'Emergency contact added', data: {contact}});
+});
+
+const removeCollectionContact = asyncHandler(async (req, res) => {
+  await collectionService.removeEmergencyContact(req.params.id, req.params.contactId, req.user.id);
+  ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Emergency contact removed', data: {}});
+});
+
+module.exports = {
+  createCollection, listCollections, listMyCollections, getCollection, updateCollection,
+  deleteCollection, listCollectionUsers, addCollectionMember, removeCollectionMember,
+  listManagedCollectionUsers, listCollectionContacts, addCollectionContact, removeCollectionContact,
+};

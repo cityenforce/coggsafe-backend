@@ -6,6 +6,9 @@ const { USER_STATUS } = require('../../constants/sosConstants');
 const { parsePagination, buildPaginationMeta } = require('../../utils/paginate');
 const escapeRegex = require('../../utils/escapeRegex');
 const { decryptCredentialPassword } = require('../../utils/password');
+const CollectionMembership = require('../collections/collectionMembership.model');
+const EmergencyContactMembership = require('../collections/emergencyContactMembership.model');
+const EmergencyContact = require('../collections/emergencyContact.model');
 
 // Every read in this module excludes soft-deleted users by default —
 // a deleted user should behave as gone from all admin management views,
@@ -88,20 +91,53 @@ async function listContacts(userId) {
  * collection. Keeping this as a dedicated endpoint prevents admin users from
  * unexpectedly appearing in the ordinary Contacts UI.
  */
-async function listEmergencySmsRecipients(userId) {
+async function listEmergencySmsRecipients(userId, activeGroupId, allGroups) {
   const currentUser = await User.findOne({ _id: userId, ...NOT_DELETED });
   if (!currentUser) throw ApiError.notFound('User not found');
-  if (!currentUser.collectionId) return [];
+  if (allGroups) {
+    if (currentUser.role !== ROLES.ADMIN) throw ApiError.forbidden('Only Boss accounts can access all owned groups');
+    const owned = await Collection.find({ownerId: currentUser._id}).select('_id');
+    const ids = owned.map(collection => collection._id);
+    const memberships = await CollectionMembership.find({collectionId: {$in: ids}, status:'active'}).select('userId');
+    const userIds = [...new Map(memberships.map(m => [String(m.userId), m.userId])).values()];
+    const users = await User.find({_id:{$in:userIds},deletedAt:null,status:USER_STATUS.ACTIVE,mobileNumber:{$exists:true,$nin:['',null]}})
+      .select('_id username mobileNumber role');
+    const contactMemberships = await EmergencyContactMembership.find({collectionId:{$in:ids}}).select('contactId');
+    const contactIds = [...new Map(contactMemberships.map(m=>[String(m.contactId),m.contactId])).values()];
+    const contacts = await EmergencyContact.find({_id:{$in:contactIds}}).select('_id name mobileNumber');
+    const unique = new Map();
+    users.forEach(u=>unique.set(u.mobileNumber.replace(/[\s()-]/g,''),{_id:u._id,username:u.username,mobileNumber:u.mobileNumber}));
+    contacts.forEach(c=>unique.set(c.mobileNumber.replace(/[\s()-]/g,''),{_id:c._id,username:c.name,mobileNumber:c.mobileNumber,emergencyContact:true}));
+    return [...unique.values()];
+  }
+  let collectionId = activeGroupId || currentUser.collectionId;
+  if (collectionId) {
+    const membership = await CollectionMembership.findOne({userId, collectionId, status: 'active'});
+    if (!membership && String(currentUser.collectionId || '') !== String(collectionId)) {
+      throw ApiError.forbidden('You are not authorized to access this group');
+    }
+  }
+  if (!collectionId) return [];
 
-  return User.find({
+  const users = await User.find({
     ...NOT_DELETED,
     status: USER_STATUS.ACTIVE,
     mobileNumber: { $exists: true, $nin: ['', null] },
     $or: [
       { role: ROLES.ADMIN },
-      { role: ROLES.USER, collectionId: currentUser.collectionId, _id: { $ne: userId } },
+      { role: ROLES.USER, collectionId, _id: { $ne: userId } },
+      {_id: {$in: (await CollectionMembership.find({collectionId, status:'active'}).select('userId')).map(m=>m.userId)}},
     ],
   }).select('_id username mobileNumber role collectionId').sort({ role: 1, username: 1 });
+
+  const contactMemberships = await EmergencyContactMembership.find({collectionId}).select('contactId');
+  const contacts = await EmergencyContact.find({_id: {$in: contactMemberships.map(m=>m.contactId)}})
+    .select('_id name mobileNumber');
+
+  const unique = new Map();
+  users.forEach(u => unique.set(u.mobileNumber.replace(/[\s()-]/g,''), {_id:u._id, username:u.username, mobileNumber:u.mobileNumber}));
+  contacts.forEach(c => unique.set(c.mobileNumber.replace(/[\s()-]/g,''), {_id:c._id, username:c.name, mobileNumber:c.mobileNumber, emergencyContact:true}));
+  return [...unique.values()];
 }
 
 async function getUserById(id) {
@@ -158,7 +194,7 @@ async function updateUser(id, { username, mobileNumber, email }) {
  * implementation of the missing function, following the exact same
  * pattern as updateUser above, plus the emergencyMessage field.
  */
-async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMessage }) {
+async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMessage, activeCollectionId }) {
   const user = await getUserById(id);
 
   if (username !== undefined) user.username = username;
@@ -169,6 +205,11 @@ async function updateOwnProfile(id, { username, mobileNumber, email, emergencyMe
   if (emergencyMessage !== undefined) {
     const trimmed = typeof emergencyMessage === 'string' ? emergencyMessage.trim() : emergencyMessage;
     user.emergencyMessage = trimmed === null || trimmed === '' ? undefined : trimmed;
+  }
+  if (activeCollectionId !== undefined) {
+    const membership = await CollectionMembership.findOne({userId:id, collectionId:activeCollectionId, status:'active'});
+    if (!membership) throw ApiError.forbidden('You are not authorized to select this group');
+    user.activeCollectionId = activeCollectionId;
   }
 
   await user.save();

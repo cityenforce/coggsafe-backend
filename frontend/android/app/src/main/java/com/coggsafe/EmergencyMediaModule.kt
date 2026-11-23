@@ -22,10 +22,22 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.provider.Settings
 import android.location.LocationManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.os.Vibrator
+import android.os.VibrationEffect
+import androidx.core.app.NotificationCompat
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
+import android.content.ContentUris
+import android.content.ContentValues
+import android.media.MediaScannerConnection
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.LifecycleOwner
@@ -464,23 +476,67 @@ class EmergencyMediaModule(
     @ReactMethod
     fun getAvailableSims(promise: Promise) {
         try {
-            val subscriptionManager = reactContext.getSystemService(SubscriptionManager::class.java)
-            val active = subscriptionManager?.activeSubscriptionInfoList ?: emptyList()
-            val sortedActive = active.sortedBy { it.simSlotIndex }
-
             val result = Arguments.createArray()
-            sortedActive.forEach { info ->
-                result.pushMap(Arguments.createMap().apply {
-                    putInt("subscriptionId", info.subscriptionId)
-                    putInt("slotIndex", info.simSlotIndex)
-                    putString("displayName", info.displayName?.toString() ?: "SIM ${info.simSlotIndex + 1}")
-                    putString("carrierName", info.carrierName?.toString() ?: "")
-                    putBoolean("isDefault", info.simSlotIndex == 0)
-                })
+            val subscriptionManager = reactContext.getSystemService(SubscriptionManager::class.java)
+            val hasPhonePermission = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+
+            var added = false
+            if (hasPhonePermission && subscriptionManager != null) {
+                try {
+                    val active = subscriptionManager.activeSubscriptionInfoList ?: emptyList()
+                    val sortedActive = active.sortedBy { it.simSlotIndex }
+                    sortedActive.forEach { info ->
+                        result.pushMap(Arguments.createMap().apply {
+                            putInt("subscriptionId", info.subscriptionId)
+                            putInt("slotIndex", info.simSlotIndex)
+                            putString("displayName", info.displayName?.toString() ?: "SIM ${info.simSlotIndex + 1}")
+                            putString("carrierName", info.carrierName?.toString() ?: "")
+                            putBoolean("isDefault", info.simSlotIndex == 0)
+                        })
+                        added = true
+                    }
+                } catch (_: Exception) {}
             }
+
+            // Robust fallback: Check TelephonyManager when activeSubscriptionInfoList is empty or permission not granted
+            if (!added) {
+                val telephonyManager = reactContext.getSystemService(TelephonyManager::class.java)
+                val simState = telephonyManager?.simState ?: TelephonyManager.SIM_STATE_UNKNOWN
+                if (simState == TelephonyManager.SIM_STATE_READY) {
+                    val opName = telephonyManager.simOperatorName.ifBlank {
+                        telephonyManager.networkOperatorName.ifBlank { "Mobile Carrier" }
+                    }
+                    val defaultSmsId = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { 0 }
+                    result.pushMap(Arguments.createMap().apply {
+                        putInt("subscriptionId", if (defaultSmsId >= 0) defaultSmsId else 0)
+                        putInt("slotIndex", 0)
+                        putString("displayName", opName)
+                        putString("carrierName", opName)
+                        putBoolean("isDefault", true)
+                    })
+                }
+            }
+
             promise.resolve(result)
         } catch (error: Exception) {
             promise.resolve(Arguments.createArray())
+        }
+    }
+
+    @ReactMethod
+    fun isAirplaneModeOn(promise: Promise) {
+        try {
+            val isAirplane = Settings.Global.getInt(
+                reactContext.contentResolver,
+                Settings.Global.AIRPLANE_MODE_ON,
+                0
+            ) != 0
+            promise.resolve(isAirplane)
+        } catch (e: Exception) {
+            promise.resolve(false)
         }
     }
 
@@ -614,17 +670,34 @@ class EmergencyMediaModule(
     private fun resolveSmsSubscriptionId(preferredSubscriptionId: Int): Int {
         return try {
             val manager = reactContext.getSystemService(SubscriptionManager::class.java)
-            val active = manager?.activeSubscriptionInfoList ?: emptyList()
-            if (active.isEmpty()) return -1
+            val hasPhonePermission = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
 
-            if (preferredSubscriptionId >= 0) {
-                active.firstOrNull { it.subscriptionId == preferredSubscriptionId }?.let { return it.subscriptionId }
+            if (hasPhonePermission && manager != null) {
+                try {
+                    val active = manager.activeSubscriptionInfoList ?: emptyList()
+                    if (active.isNotEmpty()) {
+                        if (preferredSubscriptionId >= 0) {
+                            active.firstOrNull { it.subscriptionId == preferredSubscriptionId }?.let { return it.subscriptionId }
+                        }
+                        val defaultSms = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { -1 }
+                        active.firstOrNull { it.subscriptionId == defaultSms }?.let { return it.subscriptionId }
+                        active.firstOrNull { it.simSlotIndex == 0 }?.let { return it.subscriptionId }
+                        return active.first().subscriptionId
+                    }
+                } catch (_: Exception) {}
             }
 
-            val defaultSms = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { -1 }
-            active.firstOrNull { it.subscriptionId == defaultSms }?.let { return it.subscriptionId }
-            active.firstOrNull { it.simSlotIndex == 0 }?.let { return it.subscriptionId }
-            active.first().subscriptionId
+            // Fallback: Check if TelephonyManager reports SIM is ready
+            val telephonyManager = reactContext.getSystemService(TelephonyManager::class.java)
+            if (telephonyManager?.simState == TelephonyManager.SIM_STATE_READY) {
+                val defaultSms = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { 0 }
+                return if (defaultSms >= 0) defaultSms else 0
+            }
+
+            -1
         } catch (_: Exception) {
             -1
         }
@@ -972,18 +1045,116 @@ class EmergencyMediaModule(
     }
 
     @ReactMethod
-    fun openPdf(filePath: String, promise: Promise) {
+    fun savePdfToDownloads(sourceFilePath: String, targetFileName: String, promise: Promise) {
         try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
+            val srcFile = File(sourceFilePath)
+            if (!srcFile.exists()) {
+                promise.reject("SOURCE_NOT_FOUND", "Source file not found at: $sourceFilePath")
                 return
             }
-            val uri = FileProvider.getUriForFile(
-                reactContext,
-                "${reactContext.packageName}.fileprovider",
-                file
-            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = reactContext.contentResolver
+
+                // Delete any existing file in Downloads with the exact same name to ensure clean replacement
+                try {
+                    val projection = arrayOf(MediaStore.MediaColumns._ID)
+                    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+                    val selectionArgs = arrayOf(targetFileName)
+                    val cursor = resolver.query(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        projection,
+                        selection,
+                        selectionArgs,
+                        null
+                    )
+                    cursor?.use { c ->
+                        while (c.moveToNext()) {
+                            val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                            val deleteUri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                            try {
+                                resolver.delete(deleteUri, null, null)
+                            } catch (delErr: Exception) {
+                                Log.w("EmergencyMedia", "Could not delete old media row: ${delErr.message}")
+                            }
+                        }
+                    }
+                } catch (qErr: Exception) {
+                    Log.w("EmergencyMedia", "Query for existing download file failed: ${qErr.message}")
+                }
+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, targetFileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: throw Exception("Failed to create MediaStore entry for $targetFileName")
+
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    srcFile.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+
+                val publicFile = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    targetFileName
+                )
+                showPdfDownloadedNotificationInternal(targetFileName, publicFile.absolutePath, uri)
+                promise.resolve(publicFile.absolutePath)
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs()
+                }
+                val destFile = File(downloadsDir, targetFileName)
+                if (destFile.exists()) {
+                    destFile.delete()
+                }
+                srcFile.inputStream().use { inputStream ->
+                    destFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                MediaScannerConnection.scanFile(
+                    reactContext,
+                    arrayOf(destFile.absolutePath),
+                    arrayOf("application/pdf"),
+                    null
+                )
+                showPdfDownloadedNotificationInternal(targetFileName, destFile.absolutePath, null)
+                promise.resolve(destFile.absolutePath)
+            }
+        } catch (e: Exception) {
+            Log.e("EmergencyMedia", "savePdfToDownloads failed: ${e.message}", e)
+            promise.reject("SAVE_FAILED", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun openPdf(filePath: String, promise: Promise) {
+        try {
+            val uri: Uri = if (filePath.startsWith("content://")) {
+                Uri.parse(filePath)
+            } else {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
+                    return
+                }
+                FileProvider.getUriForFile(
+                    reactContext,
+                    "${reactContext.packageName}.fileprovider",
+                    file
+                )
+            }
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1002,16 +1173,20 @@ class EmergencyMediaModule(
     @ReactMethod
     fun sharePdf(filePath: String, title: String?, promise: Promise) {
         try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
-                return
+            val uri: Uri = if (filePath.startsWith("content://")) {
+                Uri.parse(filePath)
+            } else {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    promise.reject("FILE_NOT_FOUND", "PDF file does not exist at $filePath")
+                    return
+                }
+                FileProvider.getUriForFile(
+                    reactContext,
+                    "${reactContext.packageName}.fileprovider",
+                    file
+                )
             }
-            val uri = FileProvider.getUriForFile(
-                reactContext,
-                "${reactContext.packageName}.fileprovider",
-                file
-            )
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -1026,6 +1201,182 @@ class EmergencyMediaModule(
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("SHARE_ERROR", e.message, e)
+        }
+    }
+
+    private fun ensurePdfNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "coggsafe_pdf_downloads",
+                "SOS PDF Reports",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for downloaded SOS PDF reports"
+                enableVibration(true)
+            }
+            val manager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showPdfDownloadedNotificationInternal(fileName: String, filePath: String, contentUri: Uri?) {
+        try {
+            ensurePdfNotificationChannel()
+
+            val targetUri: Uri = contentUri ?: if (filePath.startsWith("content://")) {
+                Uri.parse(filePath)
+            } else {
+                val file = File(filePath)
+                if (file.exists()) {
+                    FileProvider.getUriForFile(
+                        reactContext,
+                        "${reactContext.packageName}.fileprovider",
+                        file
+                    )
+                } else {
+                    Uri.parse(filePath)
+                }
+            }
+
+            val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(targetUri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            val chooserIntent = Intent.createChooser(viewIntent, "Open SOS Report").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                reactContext,
+                (System.currentTimeMillis() % 100000).toInt(),
+                chooserIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+            )
+
+            val notification = NotificationCompat.Builder(reactContext, "coggsafe_pdf_downloads")
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle("SOS Report Downloaded")
+                .setContentText("Tap here to open $fileName")
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText("SOS Report saved to device Downloads:\n$fileName\n\nTap here to view the report.")
+                )
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .build()
+
+            val manager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(7001, notification)
+        } catch (e: Exception) {
+            Log.e("EmergencyMedia", "showPdfDownloadedNotificationInternal failed: ${e.message}", e)
+        }
+    }
+
+    @ReactMethod
+    fun showPdfDownloadedNotification(fileName: String, filePath: String, promise: Promise) {
+        try {
+            showPdfDownloadedNotificationInternal(fileName, filePath, null)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("NOTIFICATION_ERROR", e.message, e)
+        }
+    }
+
+    // ================= DAILY SYSTEM TEST ALARMS & SIRENS =================
+    private var testAlarmRingtone: Ringtone? = null
+
+    @ReactMethod
+    fun playTestSiren(promise: Promise) {
+        try {
+            stopTestSirenInternal()
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: Settings.System.DEFAULT_ALARM_ALERT_URI
+
+            val ringtone = RingtoneManager.getRingtone(reactContext.applicationContext, alarmUri)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ringtone?.isLooping = true
+            }
+            ringtone?.play()
+            testAlarmRingtone = ringtone
+
+            try {
+                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vibratorManager = reactContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                    vibratorManager?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    reactContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 200, 400), 0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(longArrayOf(0, 400, 200, 400), 0)
+                }
+            } catch (vErr: Exception) {
+                Log.w("EmergencyMedia", "Vibrator error: ${vErr.message}")
+            }
+
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e("EmergencyMedia", "playTestSiren error: ${e.message}", e)
+            promise.reject("SIREN_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun stopTestSiren(promise: Promise) {
+        try {
+            stopTestSirenInternal()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("STOP_ERROR", e.message, e)
+        }
+    }
+
+    private fun stopTestSirenInternal() {
+        try {
+            testAlarmRingtone?.stop()
+            testAlarmRingtone = null
+        } catch (_: Exception) {}
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = reactContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vibratorManager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                reactContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+            vibrator?.cancel()
+        } catch (_: Exception) {}
+    }
+
+    @ReactMethod
+    fun postSystemTestNotification(promise: Promise) {
+        try {
+            ensurePdfNotificationChannel()
+            val notification = NotificationCompat.Builder(reactContext, "coggsafe_pdf_downloads")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("CoGG Safe System Test")
+                .setContentText("Daily system test alarms & siren verified.")
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText("Daily System Test completed successfully.\nSiren sound, device vibration, and emergency dispatch systems are operational.")
+                )
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+
+            val manager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(7002, notification)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
         }
     }
 

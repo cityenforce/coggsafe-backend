@@ -24,6 +24,10 @@
          runtime permission request can work on Android 13+. -->
     <uses-permission android:name="android.permission.SEND_SMS" />
 
+    <!-- Storage permissions for PDF export on legacy Android versions -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:ignore="ScopedStorage" />
+
     <!-- Notifications - Required for push notification badges (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

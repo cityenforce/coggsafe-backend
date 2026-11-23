@@ -34,6 +34,7 @@ router.get('/:id', sosIdParamValidation, validateRequest, sosController.getSos);
 router.patch('/:id/cancel', sosIdParamValidation, validateRequest, sosController.cancelSos);
 // Deactivation is exclusively an Admin action.
 router.patch('/:id/deactivate', authorize(ROLES.ADMIN), sosIdParamValidation, validateRequest, sosController.deactivateSos);
+router.patch('/:id/resolve', authorize(ROLES.ADMIN), sosIdParamValidation, validateRequest, sosController.resolveSos);
 router.delete('/:id', authorize(ROLES.ADMIN), sosIdParamValidation, validateRequest, sosController.deleteSos);
 
 router.post('/:id/location', reportLocationValidation, validateRequest, sosController.reportLocation);

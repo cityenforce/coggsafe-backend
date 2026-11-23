@@ -31,12 +31,15 @@ const AppHeader = ({
         {!hideLogo && (
           <View style={styles.logoContainer}>
             <View style={styles.logoWrapper}>
-              <Image source={require('../public/logo.png')} style={styles.logoImage} />
+              <Image
+                source={require('../public/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
 
             <View style={styles.logoTextContainer}>
-              <Text style={styles.logoName}>CoGG</Text>
-              <Text style={styles.logoSub}>SAFE</Text>
+              <Text style={styles.brandTitle}>CoGG Safe</Text>
             </View>
           </View>
         )}
@@ -123,47 +126,30 @@ const styles = StyleSheet.create({
   },
 
   logoWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E4002B',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#E4002B',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.2,
-    shadowRadius: 7,
-    elevation: 4,
-  },
-
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 22,
   },
 
   logoImage: {
-    width: 22,
-    height: 22,
+    width: 42,
+    height: 42,
     resizeMode: 'contain',
   },
 
   logoTextContainer: {
     marginLeft: 10,
+    justifyContent: 'center',
   },
 
-  logoName: {
-    fontSize: 20,
+  brandTitle: {
+    fontSize: 22,
     fontWeight: '900',
     color: '#111827',
-    lineHeight: 22,
-  },
-
-  logoSub: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: '#E4002B',
-    letterSpacing: 1.6,
-    marginTop: 1,
+    letterSpacing: -0.4,
   },
 
   rightSection: {

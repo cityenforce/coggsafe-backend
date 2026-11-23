@@ -25,13 +25,13 @@ const listMyContacts = asyncHandler(async (req, res) => {
 });
 
 const listMyEmergencySmsRecipients = asyncHandler(async (req, res) => {
-  const contacts = await userService.listEmergencySmsRecipients(req.user.id);
+  const contacts = await userService.listEmergencySmsRecipients(req.user.id, req.query.activeGroupId, req.query.allGroups === 'true');
   ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Emergency SMS recipients retrieved', data: {contacts}});
 });
 
 const updateMyProfile = asyncHandler(async (req, res) => {
-  const {username, mobileNumber, email, emergencyMessage} = req.body;
-  const user = await userService.updateOwnProfile(req.user.id, {username, mobileNumber, email, emergencyMessage});
+  const {username, mobileNumber, email, emergencyMessage, activeCollectionId} = req.body;
+  const user = await userService.updateOwnProfile(req.user.id, {username, mobileNumber, email, emergencyMessage, activeCollectionId});
   ApiResponse.send(res, {statusCode: httpStatus.OK, message: 'Profile updated', data: {user}});
 });
 

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {listUsers, setUserPassword, updateUser} from '../../api/resources';
 import {SafeAreaView as ContextSafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
+import Icon from '../../components/Icon';
 import {InlineUserForm} from './AdminCollectionsBackendScreen';
 import {getUserInitials} from '../../utils/userInitials';
 
@@ -179,7 +180,7 @@ const AdminUsersScreen = ({
           style={styles.backButton}
           activeOpacity={0.8}
           onPress={onBack}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
 
         <View style={styles.headerContent}>

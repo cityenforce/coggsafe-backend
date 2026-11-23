@@ -14,10 +14,14 @@ import {
   Platform,
   Alert,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getSosReports, listSos, listUsers } from '../api/resources';
-import { exportSosReportToPdf, openPdfFile, sharePdfFile } from '../services/pdf/pdfExportService';
+import { getSosReports, listSos, listUsers, listCollections } from '../api/resources';
+import { getCurrentUser } from '../api/auth';
+import { API_BASE_URL } from '../api/config';
+import { buildMediaUrl } from '../utils/media';
+import { exportSosReportToPdf } from '../services/pdf/pdfExportService';
 import Icon from './Icon';
 
 const PERIODS = [
@@ -32,6 +36,7 @@ const STATUS_OPTIONS = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
   { key: 'deactivated', label: 'Deactivated' },
+  { key: 'resolved', label: 'Resolved' },
 ];
 
 const MONTH_NAMES = [
@@ -48,6 +53,173 @@ function padZero(n) {
 function formatDateStr(date) {
   const d = new Date(date);
   return `${d.getFullYear()}-${padZero(d.getMonth() + 1)}-${padZero(d.getDate())}`;
+}
+
+export function normalizeAndEnrichRecord(s, collectionsMap = {}) {
+  const recId = String(s._id || s.id || s.eventId || '');
+  const colId = String(s.collectionId?._id || s.collectionId?.id || s.collectionId || '');
+  const colInfo = collectionsMap[colId] || (typeof s.collectionId === 'object' && s.collectionId ? s.collectionId : null);
+
+  const createdAt = s.createdAt || s.triggeredAt || s.activatedAt || new Date().toISOString();
+  const createdDate = new Date(createdAt);
+  const isValidDate = !isNaN(createdDate.getTime());
+
+  const dateFormatted = (s.dateFormatted && s.dateFormatted !== 'Not Available')
+    ? s.dateFormatted
+    : (isValidDate ? createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not Available');
+
+  const timeFormatted = (s.timeFormatted && s.timeFormatted !== 'Not Available')
+    ? s.timeFormatted
+    : (isValidDate ? createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Not Available');
+
+  const status = (s.status || 'active').toLowerCase();
+  const isActive = status === 'active';
+  const isResolved = status === 'deactivated' || status === 'resolved';
+
+  const resolvedAt = s.resolvedAt || s.deactivatedAt || (isResolved ? s.updatedAt : null);
+
+  let durationFormatted = (s.duration && s.duration !== 'Not Available') ? s.duration : null;
+  if (!durationFormatted && isValidDate) {
+    const startMs = createdDate.getTime();
+    let endMs = null;
+    if (resolvedAt) endMs = new Date(resolvedAt).getTime();
+    else if (s.cancelledAt) endMs = new Date(s.cancelledAt).getTime();
+    else if (isActive) endMs = Date.now();
+
+    if (endMs && endMs >= startMs) {
+      const diffSec = Math.round((endMs - startMs) / 1000);
+      const h = Math.floor(diffSec / 3600);
+      const m = Math.floor((diffSec % 3600) / 60);
+      const sec = diffSec % 60;
+      if (h > 0) durationFormatted = `${h}h ${m}m ${sec}s`;
+      else if (m > 0) durationFormatted = `${m}m ${sec}s`;
+      else durationFormatted = `${sec}s`;
+      if (isActive) durationFormatted += ' (Active / Ongoing)';
+    } else if (isActive) {
+      durationFormatted = 'Active (Ongoing)';
+    }
+  }
+  if (!durationFormatted) {
+    durationFormatted = isResolved ? 'Resolved' : isActive ? 'Active (Ongoing)' : 'Not Available';
+  }
+
+  const userObj = s.userId || s.user || {};
+  const userName = userObj.username || userObj.name || (s.emergencyMessage?.match(/I am ([^,]+)/)?.[1]) || 'Deleted User';
+  const userId = String(userObj._id || userObj.id || 'N/A');
+  const mobileNumber = userObj.mobileNumber || userObj.phone || 'Not Available';
+  const email = userObj.email || 'Not Available';
+
+  const groupName = colInfo?.name || s.collectionId?.name || userObj.department || userObj.groupName || 'Deleted Group';
+  const groupType = colInfo?.type || s.collectionId?.type || userObj.groupType || 'Standard';
+  const emergencyCallNumber = colInfo?.emergencyCallNumber || s.emergencyCallNumber || userObj.emergencyCallNumber || 'Not Configured';
+  const totalGroupMembers = colInfo?.userCount != null ? colInfo.userCount : (userObj.totalGroupMembers || null);
+
+  // Trigger Location
+  const loc = s.location || {};
+  const hasCoords = loc.latitude != null && loc.longitude != null;
+  const lat = hasCoords ? Number(loc.latitude) : null;
+  const lng = hasCoords ? Number(loc.longitude) : null;
+  const coordinatesText = hasCoords ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : (loc.coordinatesText || 'Location Not Available');
+  const mapsUrl = hasCoords ? `https://maps.google.com/?q=${lat},${lng}` : null;
+
+  // Live Location
+  const liveLoc = s.liveLocation || {};
+  const liveLastLoc = liveLoc.lastLocation || {};
+  const hasLiveCoords = (liveLastLoc.latitude != null && liveLastLoc.longitude != null) || (liveLoc.latitude != null && liveLoc.longitude != null);
+  const liveLat = liveLastLoc.latitude != null ? Number(liveLastLoc.latitude) : (liveLoc.latitude != null ? Number(liveLoc.latitude) : null);
+  const liveLng = liveLastLoc.longitude != null ? Number(liveLastLoc.longitude) : (liveLoc.longitude != null ? Number(liveLoc.longitude) : null);
+  const liveCoordsText = (liveLat != null && liveLng != null) ? `${liveLat.toFixed(6)}, ${liveLng.toFixed(6)}` : null;
+  const liveMapsUrl = (liveLat != null && liveLng != null) ? `https://maps.google.com/?q=${liveLat},${liveLng}` : null;
+  const isSameAsInitial = !hasLiveCoords || (hasCoords && Math.abs(liveLat - lat) < 0.0001 && Math.abs(liveLng - lng) < 0.0001);
+
+  // Media
+  const comps = s.components || {};
+  const frontUrl = s.media?.frontPhoto?.url || s.media?.frontPhoto?.uri || s.media?.frontImage?.url || (comps.frontImage?.storageRef ? buildMediaUrl(API_BASE_URL, recId, 'frontImage') : null);
+  const backUrl = s.media?.backPhoto?.url || s.media?.backPhoto?.uri || s.media?.backImage?.url || (comps.backImage?.storageRef ? buildMediaUrl(API_BASE_URL, recId, 'backImage') : null);
+  const audioUrl = s.media?.audioRecording?.url || s.media?.audioRecording?.uri || s.media?.audio?.url || (comps.audio?.storageRef ? buildMediaUrl(API_BASE_URL, recId, 'audio') : null);
+
+  const frontAvailable = Boolean(frontUrl || comps.frontImage?.status === 'success' || s.media?.hasFrontPhoto || s.media?.frontImage?.available);
+  const backAvailable = Boolean(backUrl || comps.backImage?.status === 'success' || s.media?.hasBackPhoto || s.media?.backImage?.available);
+  const audioAvailable = Boolean(audioUrl || comps.audio?.status === 'success' || s.media?.hasAudio || s.media?.audio?.available);
+
+  // Channels
+  const smsStatus = comps.sms?.status === 'success' ? 'success' : (comps.sms?.error ? `failed: ${comps.sms.error}` : (s.channels?.sms || comps.sms?.status || 'success'));
+  const emailStatus = comps.email?.status === 'success' ? 'success' : (comps.email?.error ? `failed: ${comps.email.error}` : (s.channels?.email || comps.email?.status || 'success'));
+  const pushStatus = comps.push?.status === 'success' ? 'success' : (comps.push?.error ? `failed: ${comps.push.error}` : (s.channels?.push || comps.push?.status || 'success'));
+  const callStatus = comps.call?.status === 'success' ? 'success' : (comps.call?.error ? `failed: ${comps.call.error}` : (s.channels?.call || comps.call?.status || 'success'));
+
+  return {
+    _id: recId,
+    id: recId,
+    eventId: recId,
+    status: s.status || 'active',
+    statusLabel: isActive ? 'Active' : isResolved ? 'Resolved' : s.status?.toUpperCase() || 'Unknown',
+    triggeredAt: createdAt,
+    createdAt,
+    resolvedAt,
+    deactivatedAt: s.deactivatedAt || null,
+    cancelledAt: s.cancelledAt || null,
+    deactivatedBy: s.deactivatedBy?.username || s.deactivatedBy || (isResolved ? 'Admin' : null),
+    cancelledBy: s.cancelledBy?.username || s.cancelledBy || null,
+    dateFormatted,
+    timeFormatted,
+    duration: durationFormatted,
+    emergencyMessage: s.emergencyMessage || 'Emergency alert triggered.',
+    user: {
+      id: userId,
+      name: userName,
+      mobileNumber,
+      email,
+      groupName,
+      groupType,
+      emergencyCallNumber,
+      totalGroupMembers,
+    },
+    location: {
+      latitude: lat,
+      longitude: lng,
+      accuracy: loc.accuracy != null ? (typeof loc.accuracy === 'number' ? `${loc.accuracy.toFixed(1)}m` : String(loc.accuracy)) : 'Not Available',
+      capturedAt: loc.capturedAt || createdAt,
+      source: loc.source || 'GPS Sensor',
+      status: loc.status || (hasCoords ? 'captured' : 'pending'),
+      coordinatesText,
+      mapsUrl,
+    },
+    liveLocation: {
+      status: liveLoc.status || 'not_started',
+      latitude: liveLat,
+      longitude: liveLng,
+      accuracy: liveLastLoc.accuracy != null ? (typeof liveLastLoc.accuracy === 'number' ? `${liveLastLoc.accuracy.toFixed(1)}m` : String(liveLastLoc.accuracy)) : (liveLoc.accuracy || 'Not Available'),
+      capturedAt: liveLastLoc.capturedAt || liveLoc.capturedAt || null,
+      source: liveLastLoc.source || liveLoc.source || 'GPS Sensor',
+      coordinatesText: liveCoordsText,
+      mapsUrl: liveMapsUrl,
+      isSameAsInitial,
+    },
+    media: {
+      frontImage: {
+        available: frontAvailable,
+        url: frontUrl,
+        status: frontAvailable ? 'success' : 'Not Captured',
+      },
+      backImage: {
+        available: backAvailable,
+        url: backUrl,
+        status: backAvailable ? 'success' : 'Not Captured',
+      },
+      audio: {
+        available: audioAvailable,
+        url: audioUrl,
+        status: audioAvailable ? 'success' : 'Not Captured',
+      },
+    },
+    channels: {
+      sms: smsStatus,
+      email: emailStatus,
+      push: pushStatus,
+      call: callStatus,
+    },
+  };
 }
 
 export default function SosReportModal({
@@ -79,6 +251,10 @@ export default function SosReportModal({
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [userSearchText, setUserSearchText] = useState('');
 
+  // Collections & Admin state for enrichment
+  const [collectionsMap, setCollectionsMap] = useState({});
+  const [resolvedAdminUser, setResolvedAdminUser] = useState(currentUser);
+
   // Report records state
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [recordsData, setRecordsData] = useState({ reportMeta: {}, records: [] });
@@ -93,25 +269,66 @@ export default function SosReportModal({
     totalPages: 1,
   });
 
-  // Load available users for Admin filter
+  // Keep resolvedAdminUser updated from prop
   useEffect(() => {
-    if (!isAdmin || !token) return;
+    if (currentUser) {
+      setResolvedAdminUser(currentUser);
+    }
+  }, [currentUser]);
+
+  // Load available users and collections for Admin filter and PDF enrichment
+  useEffect(() => {
+    if (!token || !visible) return;
 
     let isMounted = true;
-    async function fetchUsers() {
+    async function fetchMetadata() {
+      if (isAdmin) {
+        try {
+          const res = await listUsers(token, { limit: 100 });
+          if (isMounted && res?.users) {
+            setUsersList(res.users);
+          }
+        } catch (_) {}
+      }
+
+      // Fetch collections to resolve group names, user counts and emergency phone
       try {
-        const res = await listUsers(token, { limit: 100 });
-        if (isMounted && res?.users) {
-          setUsersList(res.users);
+        const colRes = await listCollections(token, { limit: 100 });
+        const list = colRes?.items || colRes?.collections || (Array.isArray(colRes) ? colRes : []);
+        const map = {};
+        list.forEach(c => {
+          const id = String(c._id || c.id || '');
+          if (id) {
+            map[id] = {
+              name: c.name || 'General',
+              type: c.type || 'Standard',
+              emergencyCallNumber: c.emergencyCallNumber || 'Not Configured',
+              userCount: c.userCount != null ? c.userCount : null,
+            };
+          }
+        });
+        if (isMounted) {
+          setCollectionsMap(map);
+        }
+      } catch (_) {}
+
+      // Fetch current logged-in user profile if missing username
+      try {
+        if (!resolvedAdminUser?.username) {
+          const me = await getCurrentUser(token);
+          if (isMounted && me) {
+            setResolvedAdminUser(me);
+          }
         }
       } catch (_) {}
     }
-    fetchUsers();
+
+    fetchMetadata();
 
     return () => {
       isMounted = false;
     };
-  }, [isAdmin, token]);
+  }, [isAdmin, token, visible, resolvedAdminUser?.username]);
 
   // Build query parameters based on selected period & filters
   const buildQueryParams = useCallback(() => {
@@ -244,51 +461,7 @@ export default function SosReportModal({
           return true;
         });
 
-        const formattedRecords = filtered.map(s => {
-          const hasLocation = s.location?.latitude != null && s.location?.longitude != null;
-          const createdAt = s.createdAt || new Date().toISOString();
-          const resolvedAt = s.resolvedAt || (s.status === 'deactivated' || s.status === 'cancelled' ? s.updatedAt : null);
-          let durationMinutes = null;
-          if (resolvedAt && createdAt) {
-            durationMinutes = Math.max(1, Math.round((new Date(resolvedAt) - new Date(createdAt)) / 60000));
-          }
-
-          return {
-            _id: s._id || s.id,
-            id: s._id || s.id,
-            status: s.status || 'active',
-            triggeredAt: createdAt,
-            createdAt: createdAt,
-            resolvedAt: resolvedAt,
-            durationMinutes,
-            emergencyMessage: s.emergencyMessage || 'Emergency alert triggered.',
-            user: {
-              id: s.userId?._id || s.userId?.id || 'N/A',
-              name: s.userId?.username || 'CoGG Safe user',
-              mobileNumber: s.userId?.mobileNumber || 'Not Available',
-              email: s.userId?.email || 'Not Available',
-              department: s.userId?.department || s.collectionId?.name || 'Not Available',
-            },
-            location: {
-              latitude: s.location?.latitude ?? null,
-              longitude: s.location?.longitude ?? null,
-              accuracy: s.location?.accuracy ?? null,
-              address: s.location?.address || (hasLocation ? `${s.location.latitude.toFixed(5)}, ${s.location.longitude.toFixed(5)}` : 'Not Available'),
-              status: s.location?.status || (hasLocation ? 'captured' : 'pending'),
-              capturedAt: s.location?.capturedAt || createdAt,
-              source: s.location?.source || 'gps',
-            },
-            media: {
-              hasFrontPhoto: !!s.media?.frontPhoto?.url,
-              hasBackPhoto: !!s.media?.backPhoto?.url,
-              hasAudio: !!s.media?.audioRecording?.url,
-              frontPhoto: s.media?.frontPhoto || null,
-              backPhoto: s.media?.backPhoto || null,
-              audioRecording: s.media?.audioRecording || null,
-            },
-            dispatch: s.dispatch || {},
-          };
-        });
+        const formattedRecords = filtered.map(s => normalizeAndEnrichRecord(s, collectionsMap));
 
         let startRange = '';
         let endRange = '';
@@ -309,6 +482,7 @@ export default function SosReportModal({
           endRange = customEndDate;
         }
 
+        const activeAdmin = resolvedAdminUser || currentUser || {};
         resData = {
           reportMeta: {
             period: selectedPeriod,
@@ -318,15 +492,41 @@ export default function SosReportModal({
             totalRecords: formattedRecords.length,
             activeRecords: formattedRecords.filter(r => (r.status || '').toLowerCase() === 'active').length,
             deactivatedRecords: formattedRecords.filter(r => (r.status || '').toLowerCase() !== 'active').length,
-            withMediaCount: formattedRecords.filter(r => r.media?.hasFrontPhoto || r.media?.hasBackPhoto || r.media?.hasAudio).length,
+            withMediaCount: formattedRecords.filter(r => r.media?.frontImage?.available || r.media?.backImage?.available || r.media?.audio?.available).length,
             generatedAt: new Date().toISOString(),
+            generatedBy: {
+              id: String(activeAdmin._id || activeAdmin.id || 'N/A'),
+              name: activeAdmin.username || activeAdmin.name || 'System Administrator',
+              username: activeAdmin.username || activeAdmin.name || 'System Administrator',
+              role: (activeAdmin.role || (isAdmin ? 'ADMIN' : 'USER')).toUpperCase(),
+              email: activeAdmin.email || '',
+              mobileNumber: activeAdmin.mobileNumber || '',
+            },
           },
           records: formattedRecords,
         };
       }
 
       if (resData) {
-        setRecordsData(resData);
+        const enrichedRecords = (resData.records || []).map(r => normalizeAndEnrichRecord(r, collectionsMap));
+        const activeAdmin = resolvedAdminUser || currentUser || {};
+        const enrichedResData = {
+          ...resData,
+          reportMeta: {
+            ...resData.reportMeta,
+            generatedBy: {
+              id: String(activeAdmin._id || activeAdmin.id || 'N/A'),
+              name: activeAdmin.username || activeAdmin.name || 'System Administrator',
+              username: activeAdmin.username || activeAdmin.name || 'System Administrator',
+              role: (activeAdmin.role || (isAdmin ? 'ADMIN' : 'USER')).toUpperCase(),
+              email: activeAdmin.email || '',
+              mobileNumber: activeAdmin.mobileNumber || '',
+            },
+            generatedAt: resData.reportMeta?.generatedAt || new Date().toISOString(),
+          },
+          records: enrichedRecords,
+        };
+        setRecordsData(enrichedResData);
       } else {
         setRecordsData({ reportMeta: {}, records: [] });
       }
@@ -342,6 +542,8 @@ export default function SosReportModal({
     isAdmin,
     selectedUserId,
     currentUser,
+    resolvedAdminUser,
+    collectionsMap,
     selectedStatus,
     selectedPeriod,
     activeDate,
@@ -366,10 +568,27 @@ export default function SosReportModal({
     setIsExportingPdf(true);
 
     try {
-      const result = await exportSosReportToPdf(recordsData);
+      const activeAdmin = resolvedAdminUser || currentUser || {};
+      const payload = {
+        ...recordsData,
+        reportMeta: {
+          ...recordsData.reportMeta,
+          generatedBy: {
+            id: String(activeAdmin._id || activeAdmin.id || 'N/A'),
+            name: activeAdmin.username || activeAdmin.name || 'System Administrator',
+            username: activeAdmin.username || activeAdmin.name || 'System Administrator',
+            role: (activeAdmin.role || (isAdmin ? 'ADMIN' : 'USER')).toUpperCase(),
+            email: activeAdmin.email || '',
+            mobileNumber: activeAdmin.mobileNumber || '',
+          },
+        },
+      };
+
+      const result = await exportSosReportToPdf(payload);
       setExportSuccessModal({
         visible: true,
         filePath: result.filePath,
+        sourceFilePath: result.sourceFilePath,
         fileName: result.fileName,
         totalPages: result.totalPages,
       });
@@ -377,31 +596,6 @@ export default function SosReportModal({
       Alert.alert('PDF Export Error', err.message || 'Failed to generate PDF report.');
     } finally {
       setIsExportingPdf(false);
-    }
-  };
-
-  // Handle Native Open
-  const handleOpenPdf = async () => {
-    try {
-      if (exportSuccessModal.filePath) {
-        await openPdfFile(exportSuccessModal.filePath);
-      }
-    } catch (err) {
-      Alert.alert('Open Error', err.message || 'Unable to open PDF on this device.');
-    }
-  };
-
-  // Handle Native Share
-  const handleSharePdf = async () => {
-    try {
-      if (exportSuccessModal.filePath) {
-        await sharePdfFile(
-          exportSuccessModal.filePath,
-          `CoGG Safe ${recordsData?.reportMeta?.formattedPeriodLabel || 'SOS Report'}`
-        );
-      }
-    } catch (err) {
-      Alert.alert('Share Error', err.message || 'Unable to share PDF.');
     }
   };
 
@@ -922,40 +1116,25 @@ export default function SosReportModal({
               <View style={styles.successIconCircle}>
                 <Text style={styles.successCheck}>✓</Text>
               </View>
-              <Text style={styles.successTitle}>PDF Report Ready</Text>
+              <Text style={styles.successTitle}>Report Downloaded Successfully</Text>
               <Text style={styles.successSub}>
-                Your SOS report was successfully generated and saved to device Downloads:
+                Your SOS report was successfully generated and saved to your device Downloads folder:
               </Text>
               <View style={styles.filenameBox}>
                 <Text style={styles.filenameText} numberOfLines={2}>
                   {exportSuccessModal.fileName}
                 </Text>
               </View>
-
-              <View style={styles.successActions}>
-                <TouchableOpacity
-                  style={styles.openPdfBtn}
-                  onPress={handleOpenPdf}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.openPdfBtnText}>Open PDF</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.sharePdfBtn}
-                  onPress={handleSharePdf}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.sharePdfBtnText}>Share PDF</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.savedLocationHint}>
+                📁 Saved to Device Downloads
+              </Text>
 
               <TouchableOpacity
-                style={styles.doneBtn}
+                style={styles.doneBtnPrimary}
                 onPress={() => setExportSuccessModal({ ...exportSuccessModal, visible: false })}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
               >
-                <Text style={styles.doneBtnText}>Close</Text>
+                <Text style={styles.doneBtnPrimaryText}>OK</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1615,43 +1794,24 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     textAlign: 'center',
   },
-  successActions: {
-    flexDirection: 'row',
-    gap: 10,
+  savedLocationHint: {
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  doneBtnPrimary: {
     width: '100%',
-    marginBottom: 10,
-  },
-  openPdfBtn: {
-    flex: 1,
-    backgroundColor: '#178A4B',
+    backgroundColor: '#E4002B',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  openPdfBtnText: {
+  doneBtnPrimaryText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-  },
-  sharePdfBtn: {
-    flex: 1,
-    backgroundColor: '#2563EB',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  sharePdfBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  doneBtn: {
-    paddingVertical: 8,
-  },
-  doneBtnText: {
-    color: '#6B7280',
-    fontSize: 13,
-    fontWeight: '600',
   },
 });
-

@@ -5,8 +5,8 @@ import { NativeModules, Platform } from 'react-native';
 import RNFS from 'react-native-fs';
 import { generateSosReportHtml } from './sosPdfTemplate';
 
-// Native module from EmergencyMediaModule.kt
-const { EmergencyMediaModule } = NativeModules;
+// Native module from EmergencyMediaModule.kt (registered as EmergencyMedia)
+const EmergencyMedia = NativeModules.EmergencyMedia || NativeModules.EmergencyMediaModule;
 
 let isExporting = false;
 
@@ -127,34 +127,49 @@ export async function exportSosReportToPdf(reportData) {
 
     if (Platform.OS === 'android') {
       try {
-        const downloadDir = RNFS.DownloadDirectoryPath;
-        if (downloadDir) {
-          const downloadDest = `${downloadDir}/${fileNameWithExt}`;
-
-          // Check if file already exists; if so, remove or overwrite
-          const exists = await RNFS.exists(downloadDest);
-          if (exists) {
-            await RNFS.unlink(downloadDest);
+        if (EmergencyMedia && typeof EmergencyMedia.savePdfToDownloads === 'function') {
+          const publicPath = await EmergencyMedia.savePdfToDownloads(sourceFilePath, fileNameWithExt);
+          if (publicPath) {
+            finalFilePath = publicPath;
           }
+        } else {
+          const downloadDir = RNFS.DownloadDirectoryPath;
+          if (downloadDir) {
+            const downloadDest = `${downloadDir}/${fileNameWithExt}`;
 
-          await RNFS.copyFile(sourceFilePath, downloadDest);
-          finalFilePath = downloadDest;
+            // Check if file already exists; if so, remove or overwrite
+            const exists = await RNFS.exists(downloadDest);
+            if (exists) {
+              await RNFS.unlink(downloadDest);
+            }
 
-          // Also inform Android media scanner so it appears in file managers immediately
-          if (RNFS.scanFile) {
-            try {
-              await RNFS.scanFile(finalFilePath);
-            } catch (_) {}
+            await RNFS.copyFile(sourceFilePath, downloadDest);
+            finalFilePath = downloadDest;
+
+            // Also inform Android media scanner so it appears in file managers immediately
+            if (RNFS.scanFile) {
+              try {
+                await RNFS.scanFile(finalFilePath);
+              } catch (_) {}
+            }
           }
         }
-      } catch (copyErr) {
-        // If copying to public Downloads encounters an issue, the original Documents path remains safe and accessible
+      } catch (saveErr) {
+        console.warn('Could not save to public Downloads, keeping app internal storage path:', saveErr);
         finalFilePath = sourceFilePath;
+      }
+
+      // Show top-bar notification so user can tap and view in file manager / PDF viewer
+      if (EmergencyMedia && typeof EmergencyMedia.showPdfDownloadedNotification === 'function') {
+        try {
+          await EmergencyMedia.showPdfDownloadedNotification(fileNameWithExt, finalFilePath);
+        } catch (_) {}
       }
     }
 
     return {
       filePath: finalFilePath,
+      sourceFilePath,
       fileName: fileNameWithExt,
       totalPages: parseInt(pdfResult.numberOfPages, 10) || 1,
       totalRecords: records.length,
@@ -167,13 +182,20 @@ export async function exportSosReportToPdf(reportData) {
 /**
  * Opens the saved PDF using the device's native PDF viewer.
  */
-export async function openPdfFile(filePath) {
-  if (!filePath) {
+export async function openPdfFile(filePath, fallbackFilePath) {
+  if (!filePath && !fallbackFilePath) {
     throw new Error('File path is required to open PDF.');
   }
 
-  if (EmergencyMediaModule && typeof EmergencyMediaModule.openPdf === 'function') {
-    return await EmergencyMediaModule.openPdf(filePath);
+  if (EmergencyMedia && typeof EmergencyMedia.openPdf === 'function') {
+    try {
+      return await EmergencyMedia.openPdf(filePath || fallbackFilePath);
+    } catch (err) {
+      if (fallbackFilePath && fallbackFilePath !== filePath) {
+        return await EmergencyMedia.openPdf(fallbackFilePath);
+      }
+      throw err;
+    }
   }
 
   throw new Error('Native PDF viewer bridge is unavailable.');
@@ -182,13 +204,20 @@ export async function openPdfFile(filePath) {
 /**
  * Shares the saved PDF using Android native share sheet.
  */
-export async function sharePdfFile(filePath, title = 'CoGG Safe SOS Report') {
-  if (!filePath) {
+export async function sharePdfFile(filePath, title = 'CoGG Safe SOS Report', fallbackFilePath) {
+  if (!filePath && !fallbackFilePath) {
     throw new Error('File path is required to share PDF.');
   }
 
-  if (EmergencyMediaModule && typeof EmergencyMediaModule.sharePdf === 'function') {
-    return await EmergencyMediaModule.sharePdf(filePath, title);
+  if (EmergencyMedia && typeof EmergencyMedia.sharePdf === 'function') {
+    try {
+      return await EmergencyMedia.sharePdf(filePath || fallbackFilePath, title);
+    } catch (err) {
+      if (fallbackFilePath && fallbackFilePath !== filePath) {
+        return await EmergencyMedia.sharePdf(fallbackFilePath, title);
+      }
+      throw err;
+    }
   }
 
   throw new Error('Native file sharing bridge is unavailable.');

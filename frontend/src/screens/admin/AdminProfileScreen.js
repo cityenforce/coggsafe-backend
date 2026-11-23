@@ -40,7 +40,7 @@ const AdminProfileScreen = ({
             style={styles.backButton}
             activeOpacity={0.7}
             onPress={onBack}>
-            <Text style={styles.backIcon}>‹</Text>
+            <Icon name="back" size={22} color="#1A1A1A" />
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
@@ -179,12 +179,9 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#F5F6F8',
-    alignItems: 'center',
+    padding: 4,
     justifyContent: 'center',
+    alignItems: 'center',
   },
 
   backIcon: {

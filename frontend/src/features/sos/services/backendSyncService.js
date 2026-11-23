@@ -49,6 +49,8 @@ export async function syncSosToBackend({
 
   const payload = {
     idempotencyKey: idempotencyKey || sosEvent.id,
+    ...(sosEvent.meta?.activeGroupId ? {activeGroupId:sosEvent.meta.activeGroupId} : {}),
+    ...(sosEvent.meta?.allGroups ? {allGroups:true} : {}),
     // Single source of truth: the exact message snapshotted onto this SOS
     // event when it was triggered (see App.js onPending), which is also
     // exactly what was sent in the first emergency SMS. The backend/admin

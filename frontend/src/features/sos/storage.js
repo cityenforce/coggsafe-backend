@@ -6,6 +6,7 @@ const COLLECTION_CACHE_KEY = 'cogg_safe.sos.collectionCache';
 const COLLECTION_MEMBERS_CACHE_KEY = 'cogg_safe.sos.collectionMembersCache';
 const EMERGENCY_CALL_SIM_KEY = 'cogg_safe.sos.emergencyCallSubscriptionId';
 const OFFLINE_SMS_ENABLED_KEY = 'cogg_safe.sos.offlineSmsEnabled';
+const DAILY_ALARM_ENABLED_KEY = 'cogg_safe.sos.dailyAlarmEnabled';
 const memoryStore = {};
 let queueMutation = Promise.resolve();
 let eventMutation = Promise.resolve();
@@ -264,6 +265,22 @@ export const sosLocalStore = {
     const map = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
     const value = Boolean(enabled);
     await writeJson(OFFLINE_SMS_ENABLED_KEY, {...map, [String(userId)]: value});
+    return value;
+  },
+
+  async getDailyAlarmEnabled(userId) {
+    const stored = await readJson(DAILY_ALARM_ENABLED_KEY, {});
+    if (!userId) return true;
+    if (typeof stored === 'boolean') return stored;
+    return stored?.[String(userId)] !== false;
+  },
+
+  async setDailyAlarmEnabled(userId, enabled) {
+    if (!userId) return Boolean(enabled);
+    const stored = await readJson(DAILY_ALARM_ENABLED_KEY, {});
+    const map = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    const value = Boolean(enabled);
+    await writeJson(DAILY_ALARM_ENABLED_KEY, {...map, [String(userId)]: value});
     return value;
   },
 

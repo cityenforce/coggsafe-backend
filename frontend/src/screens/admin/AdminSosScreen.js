@@ -13,7 +13,7 @@ import {
   Alert,
   AppState,
 } from 'react-native';
-import {deleteSos, deactivateSos, listSos} from '../../api/resources';
+import {deleteSos, deactivateSos, resolveSos, listSos} from '../../api/resources';
 import {getCachedApiData} from '../../api/client';
 import Icon from '../../components/Icon';
 import {clearDashboardSnapshots} from './AdminDashboardScreen';
@@ -29,6 +29,7 @@ const AdminSosScreen = ({
   onSosDetail,
   onProfile,
   token,
+  currentUser,
 }) => {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -147,7 +148,7 @@ const AdminSosScreen = ({
     }
   };
 
-  const filters = ['All', 'Active', 'Resolved'];
+  const filters = ['All', 'Active', 'Deactivated', 'Resolved'];
 
   const filteredAlerts = sosAlerts.filter(alert => {
     const searchText = search.toLowerCase();
@@ -156,8 +157,19 @@ const AdminSosScreen = ({
       alert.collectionName.toLowerCase().includes(searchText) ||
       alert.location.toLowerCase().includes(searchText);
 
-    const matchesFilter =
-      activeFilter === 'All' ? true : alert.status === activeFilter;
+    const alertStatusLower = (alert.status || '').toLowerCase();
+    let matchesFilter = true;
+    if (activeFilter === 'All') {
+      matchesFilter = true;
+    } else if (activeFilter === 'Active') {
+      matchesFilter = alertStatusLower === 'active';
+    } else if (activeFilter === 'Deactivated') {
+      matchesFilter = alertStatusLower === 'deactivated';
+    } else if (activeFilter === 'Resolved') {
+      matchesFilter = alertStatusLower === 'resolved';
+    } else {
+      matchesFilter = alert.status === activeFilter;
+    }
 
     let matchesDate = true;
     if (selectedDateFilter) {
@@ -178,6 +190,15 @@ const AdminSosScreen = ({
   const getFilterCount = filter => {
     if (filter === 'All') {
       return sosAlerts.length;
+    }
+    if (filter === 'Active') {
+      return sosAlerts.filter(item => (item.status || '').toLowerCase() === 'active').length;
+    }
+    if (filter === 'Deactivated') {
+      return sosAlerts.filter(item => (item.status || '').toLowerCase() === 'deactivated').length;
+    }
+    if (filter === 'Resolved') {
+      return sosAlerts.filter(item => (item.status || '').toLowerCase() === 'resolved').length;
     }
     return sosAlerts.filter(item => item.status === filter).length;
   };
@@ -201,7 +222,7 @@ const AdminSosScreen = ({
             style={styles.backButton}
             activeOpacity={0.7}
             onPress={onBack}>
-            <Text style={styles.backIcon}>‹</Text>
+            <Icon name="back" size={22} color="#1A1A1A" />
           </TouchableOpacity>
 
           <View style={styles.headerContent}>
@@ -211,11 +232,13 @@ const AdminSosScreen = ({
             </Text>
           </View>
 
-          {activeCount > 0 && (
+          {activeCount > 0 ? (
             <View style={styles.activeAlarmBadge}>
               <View style={styles.activeAlarmDot} />
               <Text style={styles.activeAlarmText}>Active Alarm</Text>
             </View>
+          ) : (
+            <View style={styles.headerRight} />
           )}
         </View>
 
@@ -447,7 +470,9 @@ const AdminSosScreen = ({
                 <View style={styles.actionRow}>
                   {alert.status === 'Active' ? <>
                     <TouchableOpacity style={styles.deactivateButton} onPress={() => runAdminAction(deactivateSos, sosId)}><Text style={styles.actionText}>Deactivate</Text></TouchableOpacity>
-                    <TouchableOpacity style={styles.resolveButton} onPress={() => runAdminAction(deactivateSos, sosId)}><Text style={styles.resolveText}>Resolve</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.resolveButton} onPress={() => runAdminAction(resolveSos, sosId)}><Text style={styles.resolveText}>Resolve</Text></TouchableOpacity>
+                  </> : alert.status === 'Deactivated' ? <>
+                    <TouchableOpacity style={styles.resolveButton} onPress={() => runAdminAction(resolveSos, sosId)}><Text style={styles.resolveText}>Mark Resolved</Text></TouchableOpacity>
                   </> : null}
                   <TouchableOpacity style={styles.deleteButton} onPress={() => {
                     Alert.alert('Delete SOS alert', 'This will permanently remove the SOS record from the admin list.', [
@@ -471,6 +496,7 @@ const AdminSosScreen = ({
           onClose={() => setShowReportsModal(false)}
           token={token}
           isAdmin={true}
+          currentUser={currentUser}
           onSosDetail={alert => {
             setShowReportsModal(false);
             onSosDetail?.(alert);
@@ -514,19 +540,13 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E7E7EA',
-    alignItems: 'center',
+    padding: 4,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    alignItems: 'center',
+  },
+
+  headerRight: {
+    width: 30,
   },
 
   backIcon: {

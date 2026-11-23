@@ -68,6 +68,11 @@ const userSchema = new Schema(
       ref: 'Collection',
       default: null,
     },
+    activeCollectionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Collection',
+      default: null,
+    },
     emergencyMessage: {
       type: String,
       trim: true,

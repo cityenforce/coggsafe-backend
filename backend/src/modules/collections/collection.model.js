@@ -15,6 +15,12 @@ const { COLLECTION_TYPES } = require('../../constants/sosConstants');
  */
 const collectionSchema = new Schema(
   {
+    ownerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
     type: {
       type: String,
       enum: Object.values(COLLECTION_TYPES),

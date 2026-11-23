@@ -151,7 +151,7 @@ const AdminUserDetailScreen = ({
           style={styles.backButton}
           activeOpacity={0.8}
           onPress={onBack}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
 
         <View style={styles.headerContent}>

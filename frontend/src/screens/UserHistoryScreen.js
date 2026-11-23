@@ -14,10 +14,9 @@ import {
 import {listSos} from '../api/resources';
 import {getCachedApiData} from '../api/client';
 import Icon from '../components/Icon';
-import SosReportModal from '../components/SosReportModal';
 import SosDateFilterModal from '../components/SosDateFilterModal';
 
-const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
+const UserHistoryScreen = ({token, onBack, onHistoryDetail, currentUser}) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -25,7 +24,6 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
   const [filter, setFilter] = useState('all');
   const [selectedDateFilter, setSelectedDateFilter] = useState(null);
   const [showDateFilterModal, setShowDateFilterModal] = useState(false);
-  const [showReportsModal, setShowReportsModal] = useState(false);
 
   // ================= Load History =================
   const loadHistory = useCallback(async (forceRefresh = false) => {
@@ -84,7 +82,8 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
     switch (status?.toLowerCase()) {
       case 'active': return '#E4002B';
       case 'cancelled': return '#F59E0B';
-      case 'deactivated': return '#178A4B';
+      case 'deactivated': return '#6B7280';
+      case 'resolved': return '#178A4B';
       default: return '#6B7280';
     }
   };
@@ -93,7 +92,8 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
     switch (status?.toLowerCase()) {
       case 'active': return 'ACTIVE';
       case 'cancelled': return 'CANCELLED';
-      case 'deactivated': return 'RESOLVED';
+      case 'deactivated': return 'DEACTIVATED';
+      case 'resolved': return 'RESOLVED';
       default: return status?.toUpperCase() || 'UNKNOWN';
     }
   };
@@ -107,7 +107,8 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
   };
 
   const filteredRecords = getFilteredRecords();
-  const activeCount = records.filter(r => r.status === 'active').length;
+  const activeCount = records.filter(r => (r.status || '').toLowerCase() === 'active').length;
+  const resolvedCount = records.filter(r => (r.status || '').toLowerCase() === 'resolved').length;
   const totalCount = records.length;
 
   // ================= Loading State =================
@@ -139,7 +140,7 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
           <Text style={[styles.statLabel, styles.statActiveLabel]}>Active</Text>
         </View>
         <View style={[styles.statCard, styles.statResolved]}>
-          <Text style={[styles.statNumber, styles.statResolvedNumber]}>{totalCount - activeCount}</Text>
+          <Text style={[styles.statNumber, styles.statResolvedNumber]}>{resolvedCount}</Text>
           <Text style={[styles.statLabel, styles.statResolvedLabel]}>Resolved</Text>
         </View>
       </View>
@@ -150,7 +151,7 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterContainer}>
-          {['all', 'active', 'cancelled', 'deactivated'].map((filterType) => (
+          {['all', 'active', 'deactivated', 'resolved', 'cancelled'].map((filterType) => (
             <TouchableOpacity
               key={filterType}
               style={[
@@ -191,16 +192,6 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
                 <Text style={styles.clearDateFilterCross}>✕</Text>
               </TouchableOpacity>
             ) : null}
-          </TouchableOpacity>
-
-          {/* 2. Download Report Button */}
-          <TouchableOpacity
-            style={styles.reportsButton}
-            onPress={() => setShowReportsModal(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.reportsButtonIcon}>📥</Text>
-            <Text style={styles.reportsButtonText}>Download Report</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -286,18 +277,6 @@ const UserHistoryScreen = ({token, onBack, onHistoryDetail}) => {
         )}
         <View style={styles.bottomSpace} />
       </ScrollView>
-
-      {/* ================= USER SOS REPORT MODAL ================= */}
-      <SosReportModal
-        visible={showReportsModal}
-        onClose={() => setShowReportsModal(false)}
-        token={token}
-        isAdmin={false}
-        onSosDetail={(item) => {
-          setShowReportsModal(false);
-          handleCardPress(item);
-        }}
-      />
 
       {/* ================= SOS DATE FILTER MODAL ================= */}
       <SosDateFilterModal
@@ -441,29 +420,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#1D4ED8',
-  },
-
-  reportsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF0F2',
-    borderWidth: 1,
-    borderColor: '#FFD1D8',
-    marginLeft: 4,
-  },
-
-  reportsButtonIcon: {
-    fontSize: 13,
-    marginRight: 6,
-  },
-
-  reportsButtonText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#E4002B',
   },
 
   filterButton: {

@@ -11,12 +11,22 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  NativeModules,
+  AppState,
 } from 'react-native';
 import Icon from '../components/Icon';
 import {updateMyProfile} from '../api/resources';
 import {getUserEmergencyMessage} from '../features/sos/services/emergencyMessage';
 import {savePendingProfileUpdate, clearPendingProfileUpdate} from '../features/profile/profileSync';
 import {sosLocalStore} from '../features/sos/storage';
+import {
+  runDailySystemDiagnostic,
+  stopDiagnosticSiren,
+  getLastDiagnosticResult,
+  DIAGNOSTIC_STATUS,
+} from '../features/sos/services/systemDiagnosticsService';
+
+const EmergencyMedia = NativeModules.EmergencyMedia || NativeModules.EmergencyMediaModule;
 
 const UserProfileScreen = ({
   user,
@@ -28,6 +38,8 @@ const UserProfileScreen = ({
   const [offlineSmsEnabled, setOfflineSmsEnabled] = useState(true);
   const [isLoadingOfflineSmsSetting, setIsLoadingOfflineSmsSetting] = useState(true);
   const [dailyAlarmEnabled, setDailyAlarmEnabled] = useState(true);
+  const [isTestingSiren, setIsTestingSiren] = useState(false);
+  const [lastDiagnostic, setLastDiagnostic] = useState(null);
   // Single source of truth: the same helper used to build the actual SOS
   // SMS text, so the profile screen can never show different wording than
   // what actually gets sent.
@@ -42,13 +54,107 @@ const UserProfileScreen = ({
 
   useEffect(() => {
     let mounted = true;
-    sosLocalStore.getOfflineSmsEnabled(user?._id || user?.id).then(enabled => {
+    const uid = user?._id || user?.id;
+    sosLocalStore.getOfflineSmsEnabled(uid).then(enabled => {
       if (mounted) setOfflineSmsEnabled(enabled);
     }).finally(() => {
       if (mounted) setIsLoadingOfflineSmsSetting(false);
     });
-    return () => { mounted = false; };
+
+    sosLocalStore.getDailyAlarmEnabled(uid).then(enabled => {
+      if (mounted) setDailyAlarmEnabled(enabled);
+    });
+
+    const refreshDiagnosticView = async () => {
+      let isAirplane = false;
+      if (EmergencyMedia && typeof EmergencyMedia.isAirplaneModeOn === 'function') {
+        try {
+          isAirplane = await EmergencyMedia.isAirplaneModeOn();
+        } catch (_) {}
+      }
+
+      if (isAirplane) {
+        if (mounted) {
+          setLastDiagnostic({
+            status: DIAGNOSTIC_STATUS.ACTION_REQUIRED,
+            summary: 'Action Required: Airplane Mode is ON. Please turn OFF Airplane Mode so emergency SMS and calls can dispatch.',
+            testedAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        const diag = await getLastDiagnosticResult();
+        if (mounted && diag) {
+          setLastDiagnostic(diag);
+        }
+      }
+    };
+
+    refreshDiagnosticView();
+
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        refreshDiagnosticView();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      appStateSub.remove();
+      stopDiagnosticSiren().catch(() => {});
+    };
   }, [user?._id, user?.id]);
+
+  const handleToggleDailyAlarm = async (val) => {
+    setDailyAlarmEnabled(val);
+    const uid = user?._id || user?.id;
+    await sosLocalStore.setDailyAlarmEnabled(uid, val);
+    if (!val && isTestingSiren) {
+      setIsTestingSiren(false);
+      await stopDiagnosticSiren();
+    }
+  };
+
+  const handleRunSirenTest = async () => {
+    if (!dailyAlarmEnabled) {
+      Alert.alert(
+        'System Test Disabled',
+        'Daily system test alarms are currently turned off. Switch ON the setting to enable testing.'
+      );
+      return;
+    }
+
+    if (isTestingSiren) {
+      setIsTestingSiren(false);
+      await stopDiagnosticSiren();
+      return;
+    }
+
+    setIsTestingSiren(true);
+
+    try {
+      const result = await runDailySystemDiagnostic({
+        playSiren: true,
+        sirenDurationMs: 4000,
+      });
+
+      setLastDiagnostic(result);
+
+      setTimeout(() => {
+        setIsTestingSiren(false);
+      }, 4000);
+
+      if (result.status === DIAGNOSTIC_STATUS.ACTION_REQUIRED) {
+        Alert.alert('Action Required', result.summary);
+      } else if (result.status === DIAGNOSTIC_STATUS.WARNING) {
+        Alert.alert('System Diagnostic Warning', result.summary);
+      } else {
+        Alert.alert('System Test Passed', 'All system permissions, dispatch readiness, and emergency sirens are functioning properly.');
+      }
+    } catch (err) {
+      setIsTestingSiren(false);
+      Alert.alert('Test Error', err.message || 'Unable to complete system test.');
+    }
+  };
 
   useEffect(() => {
     const latestMessage = getUserEmergencyMessage(user);
@@ -108,10 +214,11 @@ const UserProfileScreen = ({
       contentContainerStyle={styles.scrollContent}>
 
       {/* ================= BACK BUTTON ================= */}
-      <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-        <Text style={styles.backIcon}>←</Text>
-        <Text style={styles.backText}>Back</Text>
-      </TouchableOpacity>
+      <View style={styles.backButtonRow}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+          <Icon name="back" size={22} color="#1A1A1A" />
+        </TouchableOpacity>
+      </View>
 
       {/* ================= PROFILE CARD ================= */}
       <View style={styles.profileCard}>
@@ -273,17 +380,83 @@ const UserProfileScreen = ({
 
           <Switch
             value={dailyAlarmEnabled}
-            onValueChange={setDailyAlarmEnabled}
+            onValueChange={handleToggleDailyAlarm}
             trackColor={{false: '#D9DCE1', true: '#E4002B'}}
             thumbColor="#FFFFFF"
             style={styles.switch}
           />
         </View>
 
-        <Text style={styles.settingTitle}>Daily System Test Alarms</Text>
+        <Text style={styles.settingTitle}>System Test Alarms</Text>
         <Text style={styles.settingDescription}>
-          Test sirens and system dispatch capabilities daily.
+          Test sirens and system dispatch capabilities.
         </Text>
+
+        <View style={styles.systemTestStatusRow}>
+          <View
+            style={[
+              styles.testStatusDot,
+              dailyAlarmEnabled ? styles.testStatusDotActive : styles.testStatusDotInactive,
+            ]}
+          />
+          <Text
+            style={[
+              styles.testStatusText,
+              dailyAlarmEnabled ? styles.testStatusTextActive : styles.testStatusTextInactive,
+            ]}>
+            {dailyAlarmEnabled ? 'System Test Alarms Enabled' : 'System Test Alarms Disabled'}
+          </Text>
+        </View>
+
+        {dailyAlarmEnabled && (
+          <>
+            {lastDiagnostic && (
+              <View
+                style={[
+                  styles.diagnosticBox,
+                  lastDiagnostic.status === DIAGNOSTIC_STATUS.PASSED
+                    ? styles.diagnosticBoxPassed
+                    : lastDiagnostic.status === DIAGNOSTIC_STATUS.WARNING
+                    ? styles.diagnosticBoxWarning
+                    : styles.diagnosticBoxAction,
+                ]}>
+                <View style={styles.diagnosticHeaderRow}>
+                  <Text
+                    style={[
+                      styles.diagnosticStatusText,
+                      lastDiagnostic.status === DIAGNOSTIC_STATUS.PASSED
+                        ? styles.diagnosticStatusPassed
+                        : lastDiagnostic.status === DIAGNOSTIC_STATUS.WARNING
+                        ? styles.diagnosticStatusWarning
+                        : styles.diagnosticStatusAction,
+                    ]}>
+                    {lastDiagnostic.status === DIAGNOSTIC_STATUS.PASSED
+                      ? '✓ PASSED'
+                      : lastDiagnostic.status === DIAGNOSTIC_STATUS.WARNING
+                      ? '⚠ WARNING'
+                      : '❗ ACTION REQUIRED'}
+                  </Text>
+                  <Text style={styles.diagnosticTimeText}>
+                    {lastDiagnostic.testedAt ? new Date(lastDiagnostic.testedAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : ''}
+                  </Text>
+                </View>
+                <Text style={styles.diagnosticSummaryText} numberOfLines={3}>
+                  {lastDiagnostic.summary}
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.testSirenButton, isTestingSiren && styles.testSirenButtonStop]}
+              onPress={handleRunSirenTest}
+              activeOpacity={0.8}>
+              <Text style={styles.testSirenButtonIcon}>{isTestingSiren ? '⏹' : '🔔'}</Text>
+              <Text style={styles.testSirenButtonText}>
+                {isTestingSiren ? 'Stop Siren Test' : 'Test Siren & Alarms Now'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
     </ScrollView>
@@ -298,31 +471,15 @@ const styles = StyleSheet.create({
   },
 
   /* ================= BACK BUTTON ================= */
-  backButton: {
+  backButtonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 22,
-    backgroundColor: '#FFF0F2',
-    borderWidth: 1,
-    borderColor: '#FFD5DA',
     marginBottom: 16,
   },
 
-  backIcon: {
-    fontSize: 16,
-    color: '#E4002B',
-    fontWeight: '600',
-    marginRight: 6,
-  },
-
-  backText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#E4002B',
-    letterSpacing: 0.3,
+  backButton: {
+    padding: 4,
+    alignSelf: 'flex-start',
   },
 
   /* ================= PROFILE ================= */
@@ -569,6 +726,108 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '900',
+  },
+
+  /* System Test Alarms */
+  systemTestStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  testStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  testStatusDotActive: {
+    backgroundColor: '#10B981',
+  },
+  testStatusDotInactive: {
+    backgroundColor: '#9CA3AF',
+  },
+  testStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  testStatusTextActive: {
+    color: '#059669',
+  },
+  testStatusTextInactive: {
+    color: '#6B7280',
+  },
+  testSirenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF0F2',
+    borderWidth: 1.5,
+    borderColor: '#FFCCD2',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  testSirenButtonStop: {
+    backgroundColor: '#E4002B',
+    borderColor: '#B91C1C',
+  },
+  testSirenButtonIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  testSirenButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#E4002B',
+  },
+  diagnosticBox: {
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+  },
+  diagnosticBoxPassed: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  diagnosticBoxWarning: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  diagnosticBoxAction: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  diagnosticHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  diagnosticStatusText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  diagnosticStatusPassed: {
+    color: '#059669',
+  },
+  diagnosticStatusWarning: {
+    color: '#D97706',
+  },
+  diagnosticStatusAction: {
+    color: '#DC2626',
+  },
+  diagnosticTimeText: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  diagnosticSummaryText: {
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 16,
   },
 });
 

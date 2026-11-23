@@ -23,7 +23,7 @@ const AdminHeader = ({
 
       {/* ================= LEFT ================= */}
       <View style={styles.leftSection}>
-        <Text style={styles.appEyebrow}>ADMIN CONTROL CENTER</Text>
+        <Text style={styles.appEyebrow}>ADMIN CONTROL PANEL</Text>
 
         <Text style={styles.appTitle}>CoGG Safe Admin</Text>
 

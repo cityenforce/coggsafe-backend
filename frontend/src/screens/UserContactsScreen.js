@@ -57,10 +57,12 @@ const UserContactsScreen = ({token, onBack}) => {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}>
 
-      <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
-        <Text style={styles.backIcon}>←</Text>
-        <Text style={styles.backText}>Back</Text>
-      </TouchableOpacity>
+      {/* ================= BACK BUTTON ================= */}
+      <View style={styles.backButtonRow}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+          <Icon name="back" size={22} color="#1A1A1A" />
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderContent}>
@@ -160,31 +162,15 @@ const styles = StyleSheet.create({
   },
 
   /* ================= BACK BUTTON ================= */
-  backButton: {
+  backButtonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 22,
-    backgroundColor: '#FFF0F2',
-    borderWidth: 1,
-    borderColor: '#FFD5DA',
     marginBottom: 16,
   },
 
-  backIcon: {
-    fontSize: 16,
-    color: '#E4002B',
-    fontWeight: '600',
-    marginRight: 6,
-  },
-
-  backText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#E4002B',
-    letterSpacing: 0.3,
+  backButton: {
+    padding: 4,
+    alignSelf: 'flex-start',
   },
 
   /* ================= SECTION HEADER ================= */

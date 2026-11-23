@@ -4,6 +4,9 @@ const ApiError = require('../../utils/ApiError');
 const { ROLES } = require('../../constants/roles');
 const { USER_STATUS, SOS_STATUS } = require('../../constants/sosConstants');
 const { parsePagination, buildPaginationMeta } = require('../../utils/paginate');
+const CollectionMembership = require('../collections/collectionMembership.model');
+const EmergencyContactMembership = require('../collections/emergencyContactMembership.model');
+const EmergencyContact = require('../collections/emergencyContact.model');
 
 /**
  * Recipients for an SOS's notifications/dispatch: every active admin,
@@ -32,14 +35,32 @@ const { parsePagination, buildPaginationMeta } = require('../../utils/paginate')
  * Phase 3 actually built.
  */
 async function getRecipientsForSos(sos) {
-  return User.find({
+  const ids = sos.collectionIds?.length ? sos.collectionIds : [sos.collectionId];
+  const memberships = await CollectionMembership.find({collectionId: {$in: ids}, status: 'active'}).select('userId');
+  const memberIds = memberships.map(m => m.userId);
+  const recipients = await User.find({
     deletedAt: null,
     status: USER_STATUS.ACTIVE,
     $or: [
       { role: ROLES.ADMIN },
-      { role: ROLES.USER, collectionId: sos.collectionId, _id: { $ne: sos.userId } },
+      {_id: {$in: memberIds}},
+      {role: ROLES.USER, collectionId: {$in: ids}, _id: {$ne: sos.userId}},
     ],
   });
+  const unique = new Map();
+  recipients.forEach(recipient => {
+    if (String(recipient._id) !== String(sos.userId) && !unique.has(String(recipient._id))) {
+      unique.set(String(recipient._id), recipient);
+    }
+  });
+  return [...unique.values()];
+}
+
+async function getEmergencyContactsForSos(sos) {
+  const ids = sos.collectionIds?.length ? sos.collectionIds : [sos.collectionId];
+  const memberships = await EmergencyContactMembership.find({collectionId: {$in: ids}}).select('contactId');
+  const contactIds = [...new Map(memberships.map(m => [String(m.contactId), m.contactId])).values()];
+  return EmergencyContact.find({_id: {$in: contactIds}});
 }
 
 /**
@@ -129,4 +150,11 @@ async function markRead(notificationId, userId) {
   return notification;
 }
 
-module.exports = { getRecipientsForSos, createForSos, listForUser, markRead, markAllRead };
+module.exports = {
+  getRecipientsForSos,
+  getEmergencyContactsForSos,
+  createForSos,
+  listForUser,
+  markRead,
+  markAllRead,
+};
