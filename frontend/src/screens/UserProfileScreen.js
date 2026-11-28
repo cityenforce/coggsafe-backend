@@ -255,6 +255,7 @@ const UserProfileScreen = ({
                 },
               ]}>
               {(user?.displayRole || (user?.isBoss ? 'Boss' : (user?.role === 'admin' ? 'Admin' : 'User')))} • {String(user?.status || '').toLowerCase() === 'active' ? 'Active' : 'Deactive'}
+              {(user?.isBoss || user?.displayRole === 'Boss' ? 'People Leader' : (user?.displayRole || (user?.role === 'admin' ? 'Admin' : 'User')))} • {String(user?.status || '').toLowerCase() === 'active' ? 'Active' : 'Deactive'}
             </Text>
           </View>
           <Text style={styles.profileEmail} numberOfLines={2}>
@@ -262,9 +263,9 @@ const UserProfileScreen = ({
           </Text>
           {(() => {
             const groupList = Array.isArray(user?.assignedGroups) && user.assignedGroups.length > 0
-              ? user.assignedGroups.map(g => g.name ? `${g.name}${g.role === 'boss' ? ' (Boss)' : ''}` : null).filter(Boolean)
+              ? user.assignedGroups.map(g => g.name ? `${g.name}${(g.role === 'boss' || g.role === 'people leader') ? ' (People Leader)' : ''}` : null).filter(Boolean)
               : Array.isArray(user?.groupMemberships) && user.groupMemberships.length > 0
-              ? user.groupMemberships.map(m => m.collectionId?.name ? `${m.collectionId.name}${m.role === 'boss' ? ' (Boss)' : ''}` : null).filter(Boolean)
+              ? user.groupMemberships.map(m => m.collectionId?.name ? `${m.collectionId.name}${(m.role === 'boss' || m.role === 'people leader') ? ' (People Leader)' : ''}` : null).filter(Boolean)
               : user?.collection?.name
               ? [user.collection.name]
               : [];

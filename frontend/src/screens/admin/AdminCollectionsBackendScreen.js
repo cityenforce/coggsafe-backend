@@ -295,7 +295,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
         {memberError && members.length === 0 ? <View style={styles.empty}><Text style={styles.error}>{memberError}</Text><TouchableOpacity onPress={() => openCollection(selected)}><Text style={styles.retry}>Retry</Text></TouchableOpacity></View> : membersLoading ? <ActivityIndicator color="#E4002B" /> : members.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>No users in this group</Text><Text style={styles.muted}>Add a user to this group.</Text></View> : members.map(member => {
           const memberId = member._id || member.id;
           const statusLabel = member.status === 'active' ? 'Active' : 'Inactive';
-          const isMemberBoss = member.isBoss || member.displayRole === 'Boss' || (member.assignedGroups || []).some(g => String(g.id || g._id) === String(selected?._id || selected?.id) && g.role === 'boss');
+          const isMemberBoss = member.isBoss || member.displayRole === 'Boss' || member.displayRole === 'People Leader' || (member.assignedGroups || []).some(g => String(g.id || g._id) === String(selected?._id || selected?.id) && (g.role === 'boss' || g.role === 'people leader'));
           return (
             <View key={memberId} style={styles.memberCard}>
               <TouchableOpacity
@@ -309,6 +309,7 @@ export default function AdminCollectionsBackendScreen({token, onBack, onAddColle
                     {isMemberBoss ? (
                       <View style={styles.bossBadge}>
                         <Text style={styles.bossBadgeText}>Boss</Text>
+                        <Text style={styles.bossBadgeText}>People Leader</Text>
                       </View>
                     ) : null}
                   </View>
@@ -361,8 +362,8 @@ export function InlineUserForm({editMode, form, setForm, submitting, onCancel, o
   const [passwordVisible, setPasswordVisible] = useState(false);
   const update = field => value => setForm(current => ({...current, [field]: field === 'mobileNumber' ? (String(value || '').startsWith('+') ? String(value) : `+${String(value || '')}`) : value}));
   const fields = editMode
-    ? [['username', 'Username', 'Username'], ['password', 'New password (optional)', 'New password'], ['mobileNumber', 'Mobile number', 'Mobile number with country code'], ['email', 'Email (optional)', 'Email (optional)']]
-    : [['username', 'Username', 'Username'], ['password', 'Password', 'Password'], ['mobileNumber', 'Mobile number', 'Mobile number with country code'], ['email', 'Email (optional)', 'Email (optional)']];
+    ? [['username', 'Username', 'Username'], ['password', 'New password', 'New password'], ['mobileNumber', 'Mobile number', 'Mobile number with country code'], ['email', 'Email', 'Email']]
+    : [['username', 'Username', 'Username'], ['password', 'Password', 'Password'], ['mobileNumber', 'Mobile number', 'Mobile number with country code'], ['email', 'Email', 'Email']];
   return <View style={styles.form}>
     <Text style={styles.formTitle}>{editMode ? 'Edit user' : 'Add user'}</Text>
     {fields.map(([field, label, hint]) => field === 'password' ? (

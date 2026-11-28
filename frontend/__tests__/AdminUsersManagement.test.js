@@ -101,11 +101,13 @@ describe('AdminUsersScreen Component Tests', () => {
 
     expect(allText).toContain('User Management');
     expect(allText).toContain('Add Boss');
+    expect(allText).toContain('Add People Leaders');
     expect(allText).toContain('ahmed_boss');
     expect(allText).toContain('fatima_member');
     expect(allText).toContain('+923001234567');
     expect(allText).toContain('+923009876543');
     expect(allText).toContain('Security Team (Boss)');
+    expect(allText).toContain('Security Team (People Leader)');
     expect(allText).toContain('Family Group (User)');
   });
 
@@ -147,13 +149,16 @@ describe('AdminUsersScreen Component Tests', () => {
   });
 
   test('filter tab for Bosses displays only Boss users', async () => {
+  test('filter tab for People Leaders displays only People Leader users', async () => {
     const renderer = await renderScreen();
     const touchables = renderer.root.findAllByType(TouchableOpacity);
 
     // Find the Bosses filter button
+    // Find the People Leaders filter button
     const bossFilterBtn = touchables.find(t => {
       const texts = t.findAllByType(Text);
       return texts.some(tx => tx.props.children === 'Bosses');
+      return texts.some(tx => tx.props.children === 'People Leaders');
     });
 
     expect(bossFilterBtn).toBeDefined();

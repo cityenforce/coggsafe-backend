@@ -138,8 +138,27 @@ class MainApplication : Application(), ReactApplication {
       )
     }
 
+    val alertsV2Channel = NotificationChannel(
+      "coggsafe_alerts_v2",
+      "Emergency Alerts",
+      NotificationManager.IMPORTANCE_HIGH
+    ).apply {
+      description = "High priority emergency SOS alerts"
+      enableVibration(true)
+      vibrationPattern = longArrayOf(0, 500, 300, 500)
+      setShowBadge(true)
+      setSound(
+        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+        AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+      )
+    }
+
     // ✅ Create all channels
     manager.createNotificationChannel(sosChannel)
+    manager.createNotificationChannel(alertsV2Channel)
     manager.createNotificationChannel(generalChannel)
     manager.createNotificationChannel(silentChannel)
     manager.createNotificationChannel(fcmChannel)

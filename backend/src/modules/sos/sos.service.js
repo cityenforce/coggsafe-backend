@@ -152,7 +152,7 @@ async function getSosById(id, reqUser) {
     const isCollectionMember = requester
       && requester.status === USER_STATUS.ACTIVE
       && !requester.deletedAt
-      && requester.role === ROLES.USER
+      && [ROLES.USER, ROLES.PEOPLE_LEADER].includes(requester.role)
       && (
         (requester.collectionId && String(requester.collectionId) === String(sos.collectionId)) ||
         (requester.groupMemberships || []).some(m => String(m.collectionId?._id || m.collectionId) === String(sos.collectionId))

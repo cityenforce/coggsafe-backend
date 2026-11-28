@@ -9,6 +9,7 @@ import {
   DeviceEventEmitter,
   NativeModules,
   AppState,
+  Vibration,
 } from 'react-native';
 
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
@@ -249,6 +250,9 @@ function AppContent() {
     }
 
     if (source === 'foreground') {
+      try {
+        Vibration.vibrate([0, 400, 200, 400]);
+      } catch (_) {}
       showToast(body, 'info');
       return;
     }
@@ -397,7 +401,12 @@ function AppContent() {
               }),
 
             sms: async (item, event) => {
-              let recipients = event.meta?.smsRecipients || [];
+              const latestEvent = await sosLocalStore.getSosById(event.id);
+              const current = latestEvent || event;
+              if (current.services?.sms?.status === 'COMPLETED' || current.services?.sms?.status === 'SENT') {
+                return {status: 'COMPLETED', reason: 'Primary emergency SMS already sent.'};
+              }
+              let recipients = current.meta?.smsRecipients || [];
               if (!recipients.length) {
                 const cachedMembers = await sosLocalStore.getCachedCollectionMembers(user?.collectionId);
                 recipients = cachedMembers.map(member => member?.mobileNumber).filter(Boolean);
@@ -405,8 +414,6 @@ function AppContent() {
               if (!recipients.length) {
                 return {status: 'PENDING', reason: 'Collection SMS recipients are not available yet.'};
               }
-              const latestEvent = await sosLocalStore.getSosById(event.id);
-              const current = latestEvent || event;
               // This runs on app restart/reconnect for an SMS job that
               // didn't go out yet (e.g. no cellular service at trigger
               // time). By now a GPS fix may already be on the local event
@@ -458,6 +465,9 @@ function AppContent() {
             locationSms: async (item, event) => {
               const latestEvent = await sosLocalStore.getSosById(event.id);
               const current = latestEvent || event;
+              if (current.services?.locationSms?.status === 'COMPLETED' || current.services?.locationSms?.status === 'SENT') {
+                return {status: 'COMPLETED', reason: 'Location SMS already sent.'};
+              }
               if (current.meta?.firstSmsIncludedLocation) {
                 return {status: 'COMPLETED', reason: 'Location was already included in the first emergency SMS.'};
               }
@@ -761,6 +771,12 @@ function AppContent() {
 
       let collection = await sosLocalStore.getCachedCollectionInfo(sosUser?.collectionId);
       if (collection?.collection) collection = collection.collection;
+      if (!collection?.emergencyCallNumber) {
+        collection =
+          (sosUser?.collection?.emergencyCallNumber ? sosUser.collection : null) ||
+          (Array.isArray(sosUser?.assignedGroups) ? sosUser.assignedGroups.find(g => g?.emergencyCallNumber) : null) ||
+          collection;
+      }
 
       // The first SOS SMS must never wait on a live network request for its
       // recipient list. Use the last-known encrypted-at-rest local cache; the
@@ -999,6 +1015,7 @@ function AppContent() {
                 sosId: event.id,
                 type: 'LOCATION_SMS',
                 serviceName: 'locationSms',
+                delayMs: 20000,
               });
             }
             return location;

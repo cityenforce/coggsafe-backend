@@ -77,7 +77,7 @@ const userSchema = new Schema(
         },
         role: {
           type: String,
-          enum: ['boss', 'user', 'member'],
+          enum: ['people leader', 'boss', 'user', 'member'],
           default: 'user',
         },
         assignedAt: {

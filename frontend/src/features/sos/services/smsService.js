@@ -197,6 +197,24 @@ export async function sendEmergencySmsToNumbers({phoneNumbers, message, sosId, s
   
   const event = sosId ? await sosLocalStore.getSosById(sosId) : null;
   const previousRecipients = event?.services?.[serviceKey]?.recipients || [];
+  const existingService = event?.services?.[serviceKey];
+  if (
+    existingService?.status === 'COMPLETED' &&
+    Array.isArray(existingService?.recipients) &&
+    existingService.recipients.some(r => ['QUEUED_TO_ANDROID', 'SENT_BROADCAST', 'DELIVERED_BROADCAST'].includes(r.status))
+  ) {
+    if (dispatchKey) activeSmsDispatches.delete(dispatchKey);
+    const sentCount = existingService.recipients.filter(r => ['QUEUED_TO_ANDROID', 'SENT_BROADCAST', 'DELIVERED_BROADCAST'].includes(r.status)).length;
+    return {
+      status: 'COMPLETED',
+      reason: `${sentCount}/${uniqueNumbers.length} emergency SMS already queued.`,
+      recipients: existingService.recipients,
+      recipientStates: existingService.recipients,
+      sentCount,
+      failedCount: 0,
+      pendingCount: 0,
+    };
+  }
   const previousByNumber = new Map(previousRecipients.map(item => [item.normalizedRecipient || item.phoneNumber, item]));
   const pending = uniqueNumbers.filter(phoneNumber => {
     const normalizedRecipient = phoneNumber.replace(/[^\d+]/g, '');

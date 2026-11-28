@@ -73,13 +73,13 @@ describe('Admin Panel User Management & Add Boss Feature', () => {
 
     const createdUser = res.body.data.user;
     expect(createdUser.username).toBe('ahmed_boss');
-    expect(createdUser.displayRole).toBe('Boss');
+    expect(createdUser.displayRole).toBe('People Leader');
     expect(createdUser.isBoss).toBe(true);
-    expect(createdUser.role).toBe(ROLES.USER); // Global role remains USER, not ADMIN
+    expect(createdUser.role).toBe(ROLES.PEOPLE_LEADER);
     expect(createdUser.adminCreated).toBe(true);
     expect(createdUser.assignedGroups.length).toBe(2);
-    expect(createdUser.assignedGroups[0].role).toBe('boss');
-    expect(createdUser.assignedGroups[1].role).toBe('boss');
+    expect(createdUser.assignedGroups[0].role).toBe('people leader');
+    expect(createdUser.assignedGroups[1].role).toBe('people leader');
   });
 
   test('2. Existing user is assigned to multiple groups as Boss without duplicate account creation', async () => {
@@ -130,26 +130,40 @@ describe('Admin Panel User Management & Add Boss Feature', () => {
     const officeEntry = assigned.find(g => g.name === 'Office Team');
 
     expect(familyEntry.role).toBe('user');
-    expect(secEntry.role).toBe('boss');
-    expect(officeEntry.role).toBe('boss');
+    expect(secEntry.role).toBe('people leader');
+    expect(officeEntry.role).toBe('people leader');
   });
 
-  test('3. Membership-only users have isMembershipOnly=true and canEditDelete=false; Admin-created have canEditDelete=true', async () => {
+  test('3. Admin-created users have adminCreated=true; membership-only users have isMembershipOnly=true and canEditDelete=false', async () => {
     const { token: adminToken } = await createUserAndLogin(ROLES.ADMIN);
     const col = await createTestCollection('General Team');
 
-    // 1. Membership-only user
-    await request(app)
+    // 1. Admin-created user via /api/users
+    const adminUserRes = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        username: 'member_only',
+        username: 'admin_created_user',
         mobileNumber: '+923001110001',
         password: 'Passw0rd123!',
         collectionId: col._id.toString(),
       });
+    expect(adminUserRes.status).toBe(201);
+    expect(adminUserRes.body.data.user.adminCreated).toBe(true);
 
-    // 2. Boss user created by admin
+    // 2. Membership-only user (adminCreated=false)
+    const memberOnlyDoc = new User({
+      username: 'member_only',
+      mobileNumber: '+923001110003',
+      collectionId: col._id,
+      groupMemberships: [{ collectionId: col._id, role: 'user' }],
+      adminCreated: false,
+      role: ROLES.USER,
+    });
+    await memberOnlyDoc.setPassword('Passw0rd123!');
+    await memberOnlyDoc.save();
+
+    // 3. People Leader user created by admin
     await request(app)
       .post('/api/users/boss')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -178,7 +192,8 @@ describe('Admin Panel User Management & Add Boss Feature', () => {
     expect(boss).toBeDefined();
     expect(boss.isMembershipOnly).toBe(false);
     expect(boss.canEditDelete).toBe(true);
-    expect(boss.displayRole).toBe('Boss');
+    expect(boss.displayRole).toBe('People Leader');
+    expect(boss.role).toBe(ROLES.PEOPLE_LEADER);
   });
 
   test('4. Boss cannot access Admin-only functionality', async () => {

@@ -43,7 +43,7 @@ async function createUser({ username, mobileNumber, password, email, collectionI
         assignedAt: new Date(),
       },
     ],
-    adminCreated: false, // membership-only user
+    adminCreated: true,
     role: ROLES.USER, // hard-coded, never derived from caller input
   });
   await user.setPassword(password);
@@ -51,10 +51,14 @@ async function createUser({ username, mobileNumber, password, email, collectionI
   return user;
 }
 
-async function createOrAssignBoss({ username, mobileNumber, password, email, collectionIds, groupRole = 'boss' }) {
+async function createOrAssignBoss({ username, mobileNumber, password, email, collectionIds, groupRole = 'people leader' }) {
   if (!Array.isArray(collectionIds) || collectionIds.length === 0) {
     throw ApiError.badRequest('At least one group must be assigned');
   }
+
+  const normalizedGroupRole = (groupRole === 'boss' || groupRole === 'people leader')
+    ? 'people leader'
+    : groupRole;
 
   const existingCollections = await Collection.find({ _id: { $in: collectionIds } });
   if (existingCollections.length !== collectionIds.length) {
@@ -83,6 +87,9 @@ async function createOrAssignBoss({ username, mobileNumber, password, email, col
     }
 
     user.adminCreated = true;
+    if (normalizedGroupRole === 'people leader' && user.role !== ROLES.ADMIN) {
+      user.role = ROLES.PEOPLE_LEADER;
+    }
 
     if (!user.groupMemberships) {
       user.groupMemberships = [];
@@ -100,11 +107,11 @@ async function createOrAssignBoss({ username, mobileNumber, password, email, col
     collectionIds.forEach(colId => {
       const idx = user.groupMemberships.findIndex(m => String(m.collectionId?._id || m.collectionId) === String(colId));
       if (idx >= 0) {
-        user.groupMemberships[idx].role = groupRole;
+        user.groupMemberships[idx].role = normalizedGroupRole;
       } else {
         user.groupMemberships.push({
           collectionId: colId,
-          role: groupRole,
+          role: normalizedGroupRole,
           assignedAt: new Date(),
         });
       }
@@ -135,12 +142,12 @@ async function createOrAssignBoss({ username, mobileNumber, password, email, col
     username: username.trim(),
     mobileNumber: mobileNumber.trim(),
     email: email && email.trim() ? email.trim() : undefined,
-    role: ROLES.USER, // hard-coded, never global admin
+    role: normalizedGroupRole === 'people leader' ? ROLES.PEOPLE_LEADER : ROLES.USER, // never global admin
     adminCreated: true,
     collectionId: collectionIds[0],
     groupMemberships: collectionIds.map(id => ({
       collectionId: id,
-      role: groupRole,
+      role: normalizedGroupRole,
       assignedAt: new Date(),
     })),
   });
@@ -197,9 +204,10 @@ function formatUserRecord(userDoc) {
   }
 
   doc.assignedGroups = Array.from(groupMap.values());
-  const hasBossRole = doc.assignedGroups.some(g => g.role === 'boss');
+  const isLeaderRole = r => r === 'boss' || r === 'people leader';
+  const hasBossRole = doc.role === ROLES.PEOPLE_LEADER || doc.assignedGroups.some(g => isLeaderRole(g.role));
   doc.isBoss = hasBossRole;
-  doc.displayRole = doc.role === ROLES.ADMIN ? 'Admin' : (hasBossRole ? 'Boss' : 'User');
+  doc.displayRole = doc.role === ROLES.ADMIN ? 'Admin' : (hasBossRole ? 'People Leader' : 'User');
   doc.isMembershipOnly = !doc.adminCreated && !hasBossRole && doc.role !== ROLES.ADMIN;
   doc.canEditDelete = doc.adminCreated || hasBossRole;
 
@@ -319,7 +327,7 @@ async function listEmergencySmsRecipients(userId) {
     $or: [
       { role: ROLES.ADMIN },
       {
-        role: ROLES.USER,
+        role: { $in: [ROLES.USER, ROLES.PEOPLE_LEADER] },
         _id: { $ne: userId },
         $or: [
           { collectionId: { $in: uniqueGroupIds } },

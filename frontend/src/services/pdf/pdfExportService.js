@@ -124,11 +124,13 @@ export async function exportSosReportToPdf(reportData) {
 
     // 4. Save to Android Public Download Directory for easy user access
     let finalFilePath = sourceFilePath;
+    let downloadNotificationPosted = false;
 
     if (Platform.OS === 'android') {
       try {
         if (EmergencyMedia && typeof EmergencyMedia.savePdfToDownloads === 'function') {
           const publicPath = await EmergencyMedia.savePdfToDownloads(sourceFilePath, fileNameWithExt);
+          downloadNotificationPosted = true;
           if (publicPath) {
             finalFilePath = publicPath;
           }
@@ -160,7 +162,11 @@ export async function exportSosReportToPdf(reportData) {
       }
 
       // Show top-bar notification so user can tap and view in file manager / PDF viewer
-      if (EmergencyMedia && typeof EmergencyMedia.showPdfDownloadedNotification === 'function') {
+      if (
+        !downloadNotificationPosted &&
+        EmergencyMedia &&
+        typeof EmergencyMedia.showPdfDownloadedNotification === 'function'
+      ) {
         try {
           await EmergencyMedia.showPdfDownloadedNotification(fileNameWithExt, finalFilePath);
         } catch (_) {}

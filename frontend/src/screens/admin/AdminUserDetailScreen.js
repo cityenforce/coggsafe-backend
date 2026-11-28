@@ -197,6 +197,8 @@ const AdminUserDetailScreen = ({
                 ['mobileNumber', 'Mobile number'],
                 ['email', 'Email (optional)'],
                 ['password', 'New password (optional)'],
+                ['email', 'Email'],
+                ['password', 'New password'],
               ].map(([field, placeholder]) => (
                 field === 'password' ? (
                   <View key={field} style={styles.detailPasswordWrap}>
@@ -227,9 +229,11 @@ const AdminUserDetailScreen = ({
               <Text style={[
                 styles.roleBadgeText,
                 selectedUser.displayRole === 'Boss' ? styles.roleBadgeBossText :
+                (selectedUser.displayRole === 'Boss' || selectedUser.displayRole === 'People Leader') ? styles.roleBadgeBossText :
                 selectedUser.displayRole === 'Admin' ? styles.roleBadgeAdminText : styles.roleBadgeUserText
               ]}>
                 {selectedUser.displayRole || 'User'}
+                {(selectedUser.displayRole === 'Boss' || selectedUser.isBoss) ? 'People Leader' : (selectedUser.displayRole || 'User')}
               </Text>
             </View>
           </View>
@@ -333,7 +337,7 @@ const AdminUserDetailScreen = ({
         <View style={styles.infoCard}>
           {selectedUser.assignedGroups && selectedUser.assignedGroups.length > 0 ? (
             selectedUser.assignedGroups.map((groupItem, gIndex) => {
-              const isGroupBoss = groupItem.role === 'boss';
+              const isGroupBoss = groupItem.role === 'boss' || groupItem.role === 'people leader';
               return (
                 <React.Fragment key={groupItem.id || groupItem._id || gIndex}>
                   {gIndex > 0 && <View style={styles.divider} />}
@@ -352,6 +356,7 @@ const AdminUserDetailScreen = ({
                         <View style={[styles.groupRoleBadge, isGroupBoss && styles.groupRoleBadgeBoss]}>
                           <Text style={[styles.groupRoleBadgeText, isGroupBoss && styles.groupRoleBadgeBossText]}>
                             {isGroupBoss ? 'BOSS' : 'USER'}
+                            {isGroupBoss ? 'PEOPLE LEADER' : 'USER'}
                           </Text>
                         </View>
                       </View>

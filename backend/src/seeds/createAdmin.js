@@ -15,6 +15,7 @@
  *
  * ADMIN_SEED_EMAIL is optional. Re-running this script safely verifies and
  * updates the controlled development admin without storing plaintext passwords.
+ * Set ADMIN_SEED_EMAIL='-' to omit an email configured in the environment.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -28,7 +29,8 @@ async function run() {
   const username = process.env.ADMIN_SEED_USERNAME;
   const password = process.env.ADMIN_SEED_PASSWORD;
   const mobileNumber = process.env.ADMIN_SEED_MOBILE;
-  const email = process.env.ADMIN_SEED_EMAIL || undefined;
+  const configuredEmail = process.env.ADMIN_SEED_EMAIL;
+  const email = configuredEmail && configuredEmail !== '-' ? configuredEmail : undefined;
 
   if (!username || !password || !mobileNumber) {
     logger.error(
@@ -38,7 +40,10 @@ async function run() {
     return;
   }
 
-  await mongoose.connect(env.mongoUri);
+  await mongoose.connect(env.mongoUri, {
+    ...(env.mongoDbName ? { dbName: env.mongoDbName } : {}),
+    serverSelectionTimeoutMS: 10000,
+  });
 
   try {
     const existing = await User.findOne({

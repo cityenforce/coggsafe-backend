@@ -129,6 +129,7 @@ export async function activateSosFlow({
   }
 
   await enqueueSosJob({sosId: event.id, type: 'LINK_SMS', serviceName: 'linkSms'});
+  await enqueueSosJob({sosId: event.id, type: 'LINK_SMS', serviceName: 'linkSms', delayMs: 20000});
 
   const defaultRunners = {
     sms: async () => 'sms',
@@ -201,6 +202,7 @@ export async function activateSosFlow({
         ...(resultStatus === 'COMPLETED' || resultStatus === 'NOT_CONFIGURED' ? {completedAt: new Date().toISOString()} : {}),
         ...(result && typeof result === 'object' ? {
           lastResult: result,
+          ...(Array.isArray(result.recipients) ? {recipients: result.recipients} : {}),
           ...(result.frontImagePath !== undefined ? {frontImagePath: result.frontImagePath} : {}),
           ...(result.backImagePath !== undefined ? {backImagePath: result.backImagePath} : {}),
           ...(result.frontError !== undefined ? {frontError: result.frontError} : {}),

@@ -60,6 +60,7 @@ function UserForm({user, index, users, onChange, onRemove, errors}) {
     ['password', 'Password *', 'default'],
     ['mobileNumber', 'Mobile number *', 'phone-pad'],
     ['email', 'Email (optional)', 'email-address'],
+    ['email', 'Email', 'email-address'],
   ];
   return (
     <Card style={styles.userForm}>

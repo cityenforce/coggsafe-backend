@@ -81,8 +81,8 @@ const createBossValidation = [
     .withMessage('Each collectionId must be a valid Mongo ID'),
   body('groupRole')
     .optional()
-    .isIn(['boss', 'user'])
-    .withMessage('groupRole must be either "boss" or "user"'),
+    .isIn(['boss', 'people leader', 'user'])
+    .withMessage('groupRole must be "people leader", "boss", or "user"'),
   body('role').not().exists().withMessage('role cannot be set on user creation'),
 ];
 

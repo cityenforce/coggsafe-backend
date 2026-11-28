@@ -42,8 +42,11 @@ async function login(identifier, plainPassword, selectedRole) {
     throw ApiError.forbidden('This account is inactive. Contact your administrator.');
   }
 
-  if (selectedRole && user.role !== selectedRole) {
-    throw ApiError.forbidden('This account is not authorized for the selected sign-in mode.');
+  if (selectedRole) {
+    const isUserPortal = selectedRole === ROLES.USER && [ROLES.USER, ROLES.PEOPLE_LEADER].includes(user.role);
+    if (!isUserPortal && user.role !== selectedRole) {
+      throw ApiError.forbidden('This account is not authorized for the selected sign-in mode.');
+    }
   }
 
   const token = generateToken({

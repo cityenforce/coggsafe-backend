@@ -5,12 +5,14 @@
  */
 const ROLES = Object.freeze({
   ADMIN: 'admin',
+  PEOPLE_LEADER: 'people leader',
   USER: 'user',
 });
 
 const ALL_ROLES = Object.freeze(Object.values(ROLES));
 
 const GROUP_ROLES = Object.freeze({
+  PEOPLE_LEADER: 'people leader',
   BOSS: 'boss',
   USER: 'user',
   MEMBER: 'member',

@@ -49,11 +49,13 @@ function isEligible(item, state, now = Date.now()) {
   return true;
 }
 
-export async function enqueueSosJob({sosId, backendSosId = null, type, serviceName, payload = {}, idempotencyKey = null}) {
+export async function enqueueSosJob({sosId, backendSosId = null, type, serviceName, payload = {}, idempotencyKey = null, delayMs = 0}) {
   const event = await sosLocalStore.getSosById(sosId);
   const effectivePayload = serviceName === 'sms' && payload.offlineSmsEnabled === undefined
     ? {...payload, offlineSmsEnabled: event?.meta?.offlineSmsEnabled !== false}
     : payload;
+  const nowMs = Date.now();
+  const nextAttemptAt = new Date(nowMs + (Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0)).toISOString();
   return sosLocalStore.enqueueQueueItem({
     id: `${sosId}:${type}`,
     localSosId: sosId,
@@ -65,9 +67,9 @@ export async function enqueueSosJob({sosId, backendSosId = null, type, serviceNa
     status: 'PENDING',
     attempts: 0,
     idempotencyKey: idempotencyKey || payload.idempotencyKey || null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    nextAttemptAt: new Date().toISOString(),
+    createdAt: new Date(nowMs).toISOString(),
+    updatedAt: new Date(nowMs).toISOString(),
+    nextAttemptAt,
   });
 }
 

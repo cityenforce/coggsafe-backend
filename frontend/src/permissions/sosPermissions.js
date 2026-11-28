@@ -50,6 +50,7 @@ export const PERMISSION_STATUS = Object.freeze({
 });
 
 const pendingRequests = new Map();
+let permissionRequestQueue = Promise.resolve();
 
 export async function checkPermission(permission) {
   if (Platform.OS !== 'android' || !permission) return PERMISSION_STATUS.UNAVAILABLE;
@@ -69,6 +70,10 @@ export async function requestPermission(permission) {
   const existing = pendingRequests.get(permission);
   if (existing) return existing;
   const requestPromise = (async () => {
+
+  // Serialize Android permission dialogs so concurrent SOS services
+  // (SMS, Call, Camera, Audio, Location) never collide and drop a dialog.
+  const requestPromise = permissionRequestQueue.then(async () => {
     const current = await checkPermission(permission);
     if (current === PERMISSION_STATUS.GRANTED || current === PERMISSION_STATUS.UNAVAILABLE) return current;
     try {
@@ -80,8 +85,12 @@ export async function requestPermission(permission) {
           : PERMISSION_STATUS.DENIED;
     } catch (error) {
             return PERMISSION_STATUS.UNAVAILABLE;
+      return PERMISSION_STATUS.UNAVAILABLE;
     }
   })();
+  });
+
+  permissionRequestQueue = requestPromise.catch(() => undefined);
   pendingRequests.set(permission, requestPromise);
   try {
     return await requestPromise;

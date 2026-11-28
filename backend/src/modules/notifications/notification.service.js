@@ -32,12 +32,34 @@ const { parsePagination, buildPaginationMeta } = require('../../utils/paginate')
  * Phase 3 actually built.
  */
 async function getRecipientsForSos(sos) {
+  const triggerUser = sos.userId
+    ? await User.findById(sos.userId).select('collectionId groupMemberships')
+    : null;
+
+  const groupIds = Array.from(new Set([
+    ...(sos.collectionId ? [String(sos.collectionId)] : []),
+    ...(triggerUser?.collectionId ? [String(triggerUser.collectionId)] : []),
+    ...((triggerUser?.groupMemberships || []).map(m => String(m.collectionId?._id || m.collectionId)).filter(Boolean)),
+  ]));
+
+  const userGroupCondition = groupIds.length > 0
+    ? {
+        role: { $in: [ROLES.USER, ROLES.PEOPLE_LEADER] },
+        _id: { $ne: sos.userId },
+        $or: [
+          { collectionId: { $in: groupIds } },
+          { 'groupMemberships.collectionId': { $in: groupIds } },
+        ],
+      }
+    : { role: { $in: [ROLES.USER, ROLES.PEOPLE_LEADER] }, collectionId: sos.collectionId, _id: { $ne: sos.userId } };
+
   return User.find({
     deletedAt: null,
     status: USER_STATUS.ACTIVE,
     $or: [
       { role: ROLES.ADMIN },
       { role: ROLES.USER, collectionId: sos.collectionId, _id: { $ne: sos.userId } },
+      userGroupCondition,
     ],
   });
 }

@@ -49,13 +49,17 @@ const AdminUsersScreen = ({
           email: item.email || 'No email configured',
           initials: getUserInitials(item.username),
           joined: item.createdAt ? `Joined ${new Date(item.createdAt).toLocaleDateString()}` : 'Join date unavailable',
-          color: (item.displayRole === 'Boss' || item.isBoss)
+          color: (item.displayRole === 'Boss' || item.displayRole === 'People Leader' || item.isBoss)
             ? '#D97706'
             : item.displayRole === 'Admin'
             ? '#7C3AED'
             : '#C62828',
           assignedGroups: item.assignedGroups || [],
           displayRole: item.displayRole || (item.role === 'admin' ? 'Admin' : (item.isBoss ? 'Boss' : 'User')),
+          isBoss: Boolean(item.isBoss || item.displayRole === 'Boss' || item.displayRole === 'People Leader'),
+          displayRole: (item.isBoss || item.displayRole === 'Boss' || item.displayRole === 'People Leader')
+            ? 'People Leader'
+            : (item.displayRole || (item.role === 'admin' ? 'Admin' : 'User')),
           isMembershipOnly: Boolean(item.isMembershipOnly),
           canEditDelete: Boolean(item.canEditDelete),
         })));
@@ -72,6 +76,7 @@ const AdminUsersScreen = ({
   const filters = [
     'All',
     'Bosses',
+    'People Leaders',
     'Active',
     'Inactive',
   ];
@@ -95,6 +100,8 @@ const AdminUsersScreen = ({
       matchesFilter = true;
     } else if (activeFilter === 'Bosses') {
       matchesFilter = user.displayRole === 'Boss' || user.isBoss;
+    } else if (activeFilter === 'People Leaders') {
+      matchesFilter = user.displayRole === 'People Leader' || user.displayRole === 'Boss' || user.isBoss;
     } else {
       matchesFilter = user.status === activeFilter;
     }
@@ -132,6 +139,9 @@ const AdminUsersScreen = ({
     }
     if (filter === 'Bosses') {
       return users.filter(user => user.displayRole === 'Boss' || user.isBoss).length;
+    }
+    if (filter === 'People Leaders') {
+      return users.filter(user => user.displayRole === 'People Leader' || user.displayRole === 'Boss' || user.isBoss).length;
     }
     return users.filter(user => user.status === filter).length;
   };
@@ -281,12 +291,14 @@ const AdminUsersScreen = ({
               <View style={styles.addBossTextContent}>
                 <View style={styles.addBossTitleRow}>
                   <Text style={styles.addBossTitle}>Add Boss</Text>
+                  <Text style={styles.addBossTitle}>Add People Leaders</Text>
                   <View style={styles.addBossTag}>
                     <Text style={styles.addBossTagText}>MULTI-GROUP</Text>
                   </View>
                 </View>
                 <Text style={styles.addBossSubtitle}>
                   Create or assign group-scoped Boss permissions
+                  Create or assign group-scoped People Leader permissions
                 </Text>
               </View>
               <Text style={styles.addBossArrow}>›</Text>
@@ -380,6 +392,8 @@ const AdminUsersScreen = ({
               <View style={[styles.summaryDot, styles.summaryBossDot]} />
               <Text style={styles.summaryText}>Bosses</Text>
               <Text style={styles.summaryNumber}>{getFilterCount('Bosses')}</Text>
+              <Text style={styles.summaryText}>People Leaders</Text>
+              <Text style={styles.summaryNumber}>{getFilterCount('People Leaders')}</Text>
             </View>
 
             <View style={styles.summaryItem}>
@@ -516,7 +530,7 @@ const AdminUsersScreen = ({
                     <View style={styles.groupsChipsContainer}>
                       {user.assignedGroups && user.assignedGroups.length > 0 ? (
                         user.assignedGroups.map((g, index) => {
-                          const isGroupBoss = g.role === 'boss';
+                          const isGroupBoss = g.role === 'boss' || g.role === 'people leader';
                           return (
                             <View
                               key={`${g.id || g._id || index}`}
@@ -530,6 +544,7 @@ const AdminUsersScreen = ({
                                   isGroupBoss && styles.groupChipBossText,
                                 ]}>
                                 {g.name} ({isGroupBoss ? 'Boss' : 'User'})
+                                {g.name} ({isGroupBoss ? 'People Leader' : 'User'})
                               </Text>
                             </View>
                           );

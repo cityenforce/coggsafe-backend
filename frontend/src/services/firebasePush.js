@@ -1,6 +1,8 @@
 // src/services/firebasePush.js
 
+import {PermissionsAndroid, Platform} from 'react-native';
 import {request} from '../api/client';
+import {PERMISSION_STATUS, requestPermission} from '../permissions/sosPermissions';
 
 // ================= NOTIFICATION CHANNEL IDS =================
 export const NOTIFICATION_CHANNELS = {
@@ -70,6 +72,13 @@ export function isFirebaseMessagingAvailable() {
 }
 
 export async function requestFirebasePermission() {
+  if (Platform.OS === 'android' && Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+    const androidNotif = await requestPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    if (androidNotif === PERMISSION_STATUS.DENIED || androidNotif === PERMISSION_STATUS.BLOCKED) {
+      return {status: 'denied', reason: 'Notification permission was denied.'};
+    }
+  }
+
   const messaging = resolveMessagingModule();
   if (!messaging) {
     return {status: 'unsupported', reason: 'Firebase messaging is not configured in this app build.'};

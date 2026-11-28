@@ -127,6 +127,7 @@ export default function AddBossModal({
 
     if (selectedGroups.length === 0) {
       setError('Please assign at least one group to this Boss.');
+      setError('Please assign at least one group to this People Leader.');
       return;
     }
 
@@ -154,12 +155,15 @@ export default function AddBossModal({
         isExisting
           ? `${user?.username || username} has been assigned Boss permissions for the selected groups.`
           : `Boss account "${user?.username || username}" created successfully.`
+          ? `${user?.username || username} has been assigned People Leader permissions for the selected groups.`
+          : `People Leader account "${user?.username || username}" created successfully.`
       );
 
       onSuccess?.(user);
       onClose();
     } catch (err) {
       setError(err.message || 'Unable to create or assign Boss. Please try again.');
+      setError(err.message || 'Unable to create or assign People Leader. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -178,10 +182,13 @@ export default function AddBossModal({
             <View style={styles.headerTitleWrap}>
               <View style={styles.bossBadge}>
                 <Text style={styles.bossBadgeText}>ROLE: BOSS</Text>
+                <Text style={styles.bossBadgeText}>ROLE: PEOPLE LEADER</Text>
               </View>
               <Text style={styles.title}>Add Boss Account</Text>
+              <Text style={styles.title}>Add People Leaders</Text>
               <Text style={styles.subtitle}>
                 Assign group-scoped Boss permissions. Boss accounts do not receive Admin Panel access.
+                Assign group-scoped People Leader permissions. People Leader accounts do not receive Admin Panel access.
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -203,6 +210,7 @@ export default function AddBossModal({
                 <Text style={styles.noticeTitle}>ℹ Existing Account Detected</Text>
                 <Text style={styles.noticeText}>
                   User "{detectedExistingUser.username || detectedExistingUser.name}" will be assigned the Boss role for selected groups. Existing memberships will remain preserved.
+                  User "{detectedExistingUser.username || detectedExistingUser.name}" will be assigned the People Leader role for selected groups. Existing memberships will remain preserved.
                 </Text>
               </View>
             ) : null}
@@ -236,6 +244,7 @@ export default function AddBossModal({
                 value={username}
                 onChangeText={setUsername}
                 placeholder="e.g. Ahmed Ali"
+                placeholder="e.g. John Citizen"
                 placeholderTextColor="#9CA3AF"
                 autoCapitalize="words"
               />
@@ -245,6 +254,7 @@ export default function AddBossModal({
             <View style={styles.formGroup}>
               <Text style={styles.label}>
                 PASSWORD {detectedExistingUser ? '(OPTIONAL FOR EXISTING)' : <Text style={styles.required}>*</Text>}
+                PASSWORD {detectedExistingUser ? null : <Text style={styles.required}>*</Text>}
               </Text>
               <View style={styles.passwordInputContainer}>
                 <TextInput
@@ -269,11 +279,13 @@ export default function AddBossModal({
             {/* Email */}
             <View style={styles.formGroup}>
               <Text style={styles.label}>EMAIL ADDRESS (OPTIONAL)</Text>
+              <Text style={styles.label}>EMAIL ADDRESS</Text>
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="boss@coggsafe.com"
+                placeholder="leader@coggsafe.com"
                 placeholderTextColor="#9CA3AF"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -297,6 +309,7 @@ export default function AddBossModal({
 
               <Text style={styles.helperText}>
                 Select one or more groups where this user will hold the Boss role.
+                Select one or more groups where this user will hold the People Leader role.
               </Text>
 
               {loadingGroups ? (
@@ -341,6 +354,7 @@ export default function AddBossModal({
                         <View style={[styles.roleBadge, isChecked && styles.roleBadgeSelected]}>
                           <Text style={[styles.roleBadgeText, isChecked && styles.roleBadgeTextSelected]}>
                             Boss
+                            People Leader
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -357,6 +371,9 @@ export default function AddBossModal({
                 • Boss role is strictly scoped to selected groups.
                 {'\n'}• Boss will NOT receive global administrative rights or access to the Admin Control Center.
                 {'\n'}• Only System Admins can create and assign Boss roles.
+                • People Leader role is strictly scoped to selected groups.
+                {'\n'}• People Leader will NOT receive global administrative rights or access to the Admin Control Center.
+                {'\n'}• Only System Admins can create and assign People Leader roles.
               </Text>
             </View>
 
@@ -380,6 +397,7 @@ export default function AddBossModal({
                 ) : (
                   <Text style={styles.btnSubmitText}>
                     {detectedExistingUser ? 'Assign Boss Role' : 'Create Boss'}
+                    {detectedExistingUser ? 'Assign People Leader' : 'Create People Leader'}
                   </Text>
                 )}
               </TouchableOpacity>
