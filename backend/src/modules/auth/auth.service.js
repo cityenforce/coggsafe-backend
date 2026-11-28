@@ -3,6 +3,7 @@ const Collection = require('../collections/collection.model');
 const ApiError = require('../../utils/ApiError');
 const { generateToken } = require('../../utils/jwt');
 const { USER_STATUS } = require('../../constants/sosConstants');
+const { ROLES } = require('../../constants/roles');
 const { formatUserRecord } = require('../users/user.service');
 
 /**
